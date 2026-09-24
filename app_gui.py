@@ -32,8 +32,33 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 # Версия приложения и репозиторий GitHub для проверки обновлений
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.5"
 DEFAULT_GITHUB_REPO = "Romosol/Digital-LogBook-for-GBU-DO-RDOT"
+
+
+def normalize_github_repo(repo_str: str) -> str:
+    """Приводит любую ссылку (https://github.com/user/repo, user/repo.git) к чистому формату 'user/repo'."""
+    if not repo_str:
+        return DEFAULT_GITHUB_REPO
+    s = str(repo_str).strip()
+    for prefix in (
+        "https://github.com/",
+        "http://github.com/",
+        "https://www.github.com/",
+        "http://www.github.com/",
+        "github.com/",
+        "git@github.com:"
+    ):
+        if s.startswith(prefix):
+            s = s[len(prefix):]
+            break
+    if s.endswith(".git"):
+        s = s[:-4]
+    s = s.strip("/ ")
+    parts = [p for p in s.split("/") if p]
+    if len(parts) >= 2:
+        return f"{parts[0]}/{parts[1]}"
+    return s or DEFAULT_GITHUB_REPO
 
 
 def get_app_directory() -> str:
@@ -3975,65 +4000,144 @@ class JournalCoverApp(tk.Tk):
             self.show_config_dialog()
 
     def get_github_repo(self) -> str:
-        """Возвращает репозиторий GitHub из config.json или значение по умолчанию."""
-        repo = self.config_data.get("github_repo", "").strip()
-        if not repo:
-            repo = DEFAULT_GITHUB_REPO
-        return repo
+        """Возвращает нормализованный репозиторий GitHub (например, 'Romosol/Digital-LogBook-for-GBU-DO-RDOT')."""
+        raw_repo = self.config_data.get("github_repo", "")
+        return normalize_github_repo(raw_repo)
 
     def check_updates_background(self, silent: bool = True):
-        """Запускает опрос GitHub API для проверки нового релиза в фоновом потоке."""
+        """Запускает опрос GitHub API для проверки нового релиза в фоновом потоке с визуальной индикацией."""
+        if not silent:
+            if hasattr(self, 'btn_check_updates') and self.btn_check_updates.winfo_exists():
+                self.btn_check_updates.config(text="⏳ Проверка...", state=tk.DISABLED)
+            if hasattr(self, 'status_var'):
+                self.status_var.set("Проверка наличия обновлений на GitHub...")
+
         t = threading.Thread(target=self._check_updates_worker, args=(silent,), daemon=True)
         t.start()
 
     def _check_updates_worker(self, silent: bool = True):
-        """Фоновый воркер запроса к GitHub API releases/latest."""
+        """Фоновый воркер запроса к GitHub API releases/latest с поддержкой SSL fallback и сетевых фильтров."""
         repo = self.get_github_repo()
-        if not repo or "/" not in repo:
-            if not silent:
-                self.after(0, lambda: messagebox.showwarning(
-                    "Проверка обновлений",
-                    "Не указан репозиторий GitHub для проверки обновлений."
-                ))
-            return
 
-        api_url = f"https://api.github.com/repos/{repo}/releases/latest"
-        req = urllib.request.Request(
-            api_url,
-            headers={
+        def _restore_ui(status_msg=None):
+            if hasattr(self, 'btn_check_updates') and self.btn_check_updates.winfo_exists():
+                self.btn_check_updates.config(text=f"🔄 v{APP_VERSION}", state=tk.NORMAL)
+            if status_msg and hasattr(self, 'status_var'):
+                self.status_var.set(status_msg)
+
+        try:
+            if not repo or "/" not in repo:
+                if not silent:
+                    self.after(0, lambda: messagebox.showwarning(
+                        "Проверка обновлений",
+                        f"Некорректный репозиторий GitHub: '{repo}'.\n"
+                        f"Используйте формат 'Владелец/Репозиторий'."
+                    ))
+                self.after(0, lambda: _restore_ui("Не указан репозиторий для проверки обновлений"))
+                return
+
+            api_url = f"https://api.github.com/repos/{repo}/releases/latest"
+            headers = {
                 "User-Agent": f"JournalDOP/{APP_VERSION}",
                 "Accept": "application/vnd.github.v3+json"
             }
-        )
+            req = urllib.request.Request(api_url, headers=headers)
 
-        try:
-            with urllib.request.urlopen(req, timeout=4) as resp:
-                if resp.status == 200:
-                    payload = json.loads(resp.read().decode("utf-8"))
-                    latest_tag = payload.get("tag_name", "").strip()
-                    release_name = payload.get("name", "") or latest_tag
-                    html_url = payload.get("html_url", f"https://github.com/{repo}/releases/latest")
-                    release_body = payload.get("body", "")
+            payload = None
+            last_error = None
 
-                    current_v = parse_version_tuple(APP_VERSION)
-                    latest_v = parse_version_tuple(latest_tag)
+            # Поддержка стандартного SSL контекста и unverified fallback для сетей с фильтрацией (ЕСПД)
+            ssl_contexts = [None]
+            try:
+                import ssl
+                ssl_contexts = [ssl.create_default_context(), ssl._create_unverified_context()]
+            except Exception:
+                ssl_contexts = [None]
 
-                    if latest_v > current_v:
-                        self.after(0, lambda: self._prompt_update(latest_tag, release_name, html_url, release_body))
+            for ctx in ssl_contexts:
+                try:
+                    kwargs = {"timeout": 8}
+                    if ctx is not None:
+                        kwargs["context"] = ctx
+                    with urllib.request.urlopen(req, **kwargs) as resp:
+                        if resp.status == 200:
+                            data = resp.read().decode("utf-8")
+                            payload = json.loads(data)
+                            last_error = None
+                            break
+                        else:
+                            last_error = Exception(f"HTTP статус: {resp.status}")
+                except Exception as ex:
+                    last_error = ex
+                    if isinstance(ex, urllib.error.HTTPError):
+                        break
+
+            if payload:
+                latest_tag = payload.get("tag_name", "").strip()
+                release_name = payload.get("name", "") or latest_tag
+                html_url = payload.get("html_url", f"https://github.com/{repo}/releases/latest")
+                release_body = payload.get("body", "")
+
+                current_v = parse_version_tuple(APP_VERSION)
+                latest_v = parse_version_tuple(latest_tag)
+
+                if latest_v > current_v:
+                    self.after(0, lambda: self._prompt_update(latest_tag, release_name, html_url, release_body))
+                    self.after(0, lambda: _restore_ui(f"Доступна новая версия: {latest_tag}"))
+                else:
+                    msg_ok = f"У вас установлена актуальная версия: v{APP_VERSION}"
+                    self.after(0, lambda: _restore_ui(msg_ok))
+                    if not silent:
+                        self.after(0, lambda: messagebox.showinfo(
+                            "Проверка обновлений",
+                            f"У вас установлена самая актуальная версия программы!\n\n"
+                            f"Текущая версия: v{APP_VERSION}\n"
+                            f"Версия последнего релиза: {latest_tag}\n"
+                            f"Репозиторий: {repo}\n\n"
+                            f"Обновление не требуется."
+                        ))
+            else:
+                err_msg = str(last_error) if last_error else "Нет ответа от GitHub API"
+                is_rate_limit = isinstance(last_error, urllib.error.HTTPError) and last_error.code == 403
+                is_not_found = isinstance(last_error, urllib.error.HTTPError) and last_error.code == 404
+
+                self.after(0, lambda: _restore_ui("Не удалось связаться с GitHub для проверки обновлений"))
+
+                if not silent:
+                    releases_page_url = f"https://github.com/{repo}/releases"
+                    if is_rate_limit:
+                        err_text = (
+                            f"GitHub временно ограничил количество запросов с вашего IP-адреса.\n\n"
+                            f"Вы можете проверить наличие новой версии напрямую на странице релизов:\n{releases_page_url}\n\n"
+                            f"Открыть страницу релизов в браузере?"
+                        )
+                    elif is_not_found:
+                        err_text = (
+                            f"Релизы в репозитории не найдены или репозиторий недоступен:\n{repo}\n\n"
+                            f"Открыть страницу репозитория на GitHub в браузере?"
+                        )
                     else:
-                        if not silent:
-                            self.after(0, lambda: messagebox.showinfo(
-                                "Обновления",
-                                f"У вас установлена самая актуальная версия программы:\n\n"
-                                f"Текущая версия: v{APP_VERSION}\n"
-                                f"Репозиторий: {repo}"
-                            ))
-        except Exception as e:
+                        err_text = (
+                            f"Не удалось связаться с сервером GitHub:\n{err_msg}\n\n"
+                            f"Возможные причины: отсутствие подключения к Интернету или сетевой фильтр.\n\n"
+                            f"Открыть страницу релизов программы в браузере вручную?"
+                        )
+
+                    def _ask_open():
+                        if messagebox.askyesno("Проверка обновлений", err_text, icon="warning"):
+                            try:
+                                webbrowser.open(releases_page_url)
+                            except Exception:
+                                pass
+
+                    self.after(0, _ask_open)
+
+        except Exception as global_ex:
+            self.after(0, lambda: _restore_ui("Ошибка проверки обновлений"))
             if not silent:
                 self.after(0, lambda: messagebox.showerror(
                     "Ошибка проверки обновлений",
-                    f"Не удалось связаться с сервером GitHub:\n{e}\n\n"
-                    f"Проверьте подключение к Интернету или репозиторий: {repo}"
+                    f"Произошла непредвиденная ошибка:\n{global_ex}"
                 ))
 
     def _prompt_update(self, latest_tag: str, release_name: str, html_url: str, release_body: str = ""):
@@ -4279,7 +4383,7 @@ class JournalCoverApp(tk.Tk):
         )
         btn_top_shortcuts.pack(side=tk.LEFT, padx=(0, 8))
 
-        btn_check_updates = tk.Button(
+        self.btn_check_updates = tk.Button(
             header_right,
             text=f"🔄 v{APP_VERSION}",
             command=lambda: self.check_updates_background(silent=False),
@@ -4294,7 +4398,7 @@ class JournalCoverApp(tk.Tk):
             pady=5,
             cursor="hand2"
         )
-        btn_check_updates.pack(side=tk.LEFT)
+        self.btn_check_updates.pack(side=tk.LEFT)
 
         # Стили ttk для вкладок и выпадающего списка
         style = ttk.Style()
