@@ -3858,18 +3858,31 @@ class JournalCoverApp(tk.Tk):
         widget.bind("<Button-3>", show_menu)
         widget.bind("<Button-2>", show_menu)
 
+    def is_ctrl_pressed(self, event) -> bool:
+        """
+        Проверяет, зажата ли действительно клавиша Ctrl (Windows/Linux) или Command (macOS).
+        Корректно фильтрует состояние клавиатуры, исключая ложные срабатывания от NumLock (бит 0x8 на Windows),
+        CapsLock (бит 0x2) и Alt (бит 0x8 / 0x20000).
+        """
+        if event is None:
+            return False
+        state = getattr(event, 'state', 0)
+        # На Windows и Linux бит 0x4 — единственный флаг нажатого Control (ControlMask = 4)
+        if sys.platform != "darwin":
+            return bool(state & 0x4)
+        # На macOS Command клавиша:
+        return bool((state & 0x4) or (state & 0x8) or (state & 0x10000))
+
     def handle_entry_shortcuts(self, event):
         """Универсальный перехват сочетаний клавиш с поддержкой русской раскладки (RU/EN)."""
-        # Проверка зажатия Ctrl (Windows/Linux) или Command (macOS)
-        state = getattr(event, 'state', 0)
-        is_ctrl = bool(state & 0x4) or bool(state & 0x8) or bool(state & 0x40000)
-
-        if not is_ctrl:
+        if not self.is_ctrl_pressed(event):
             return None
 
-        key = (event.keysym or "").lower()
+        key = (getattr(event, 'keysym', '') or "").lower()
         code = getattr(event, 'keycode', 0)
-        widget = event.widget
+        widget = getattr(event, 'widget', None)
+        if not widget:
+            return None
 
         # 1. Ctrl + A / Cmd + A (Выделить всё) - keycode 65 на Windows
         if key in ('a', 'cyrillic_ef') or code == 65:
@@ -3882,7 +3895,7 @@ class JournalCoverApp(tk.Tk):
             return "break"
 
         # 3. Ctrl + V / Cmd + V (Вставить) - keycode 86 на Windows
-        elif key in ('v', 'cyrillic_em') or code == 86:
+        elif key in ('v', 'cyrillic_em', 'cyrillic_m') or code in (86, 54):
             self.paste_to_widget(widget)
             return "break"
 
@@ -3894,8 +3907,15 @@ class JournalCoverApp(tk.Tk):
         # 5. Ctrl + Z / Cmd + Z (Отменить) - keycode 90 на Windows
         elif key in ('z', 'cyrillic_ya') or code == 90:
             last_saved = self.config_data.get("last_academic_year", "2024 / 2025")
-            self.year_var.set(last_saved)
-            self.status_var.set("Отменено: восстановлено предыдущее значение")
+            if hasattr(self, 'year_var'):
+                self.year_var.set(last_saved)
+            self.status_var.set("Отменено: восстановлено предыдущее значение (Ctrl+Z)")
+            return "break"
+
+        # 6. Ctrl + S / Cmd + S (Сохранить все данные) - keycode 83 на Windows
+        elif key in ('s', 'cyrillic_yeru') or code == 83:
+            self.save_all_pending_data()
+            self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
             return "break"
 
         return None
@@ -6150,21 +6170,21 @@ class JournalCoverApp(tk.Tk):
         self.btn_open_full.pack(fill=tk.X)
 
         # Глобальные горячие клавиши окна (Ctrl+S, Ctrl+0..5, F1)
-        self.bind("<Control-s>", lambda e: self.on_generate_click())
-        self.bind("<Control-S>", lambda e: self.on_generate_click())
-        self.bind("<Command-s>", lambda e: self.on_generate_click())
-        self.bind("<Control-Key-0>", lambda e: self.notebook.select(0))
-        self.bind("<Control-Key-1>", lambda e: self.notebook.select(1))
-        self.bind("<Control-Key-2>", lambda e: self.notebook.select(2))
-        self.bind("<Control-Key-3>", lambda e: self.notebook.select(3))
-        self.bind("<Control-Key-4>", lambda e: self.notebook.select(4))
-        self.bind("<Control-Key-5>", lambda e: self.notebook.select(5))
-        self.bind("<Command-Key-0>", lambda e: self.notebook.select(0))
-        self.bind("<Command-Key-1>", lambda e: self.notebook.select(1))
-        self.bind("<Command-Key-2>", lambda e: self.notebook.select(2))
-        self.bind("<Command-Key-3>", lambda e: self.notebook.select(3))
-        self.bind("<Command-Key-4>", lambda e: self.notebook.select(4))
-        self.bind("<Command-Key-5>", lambda e: self.notebook.select(5))
+        self.bind("<Control-s>", self.on_window_ctrl_s)
+        self.bind("<Control-S>", self.on_window_ctrl_s)
+        self.bind("<Command-s>", self.on_window_ctrl_s)
+        self.bind("<Control-Key-0>", lambda e: self.on_shortcut_tab_select(0, e))
+        self.bind("<Control-Key-1>", lambda e: self.on_shortcut_tab_select(1, e))
+        self.bind("<Control-Key-2>", lambda e: self.on_shortcut_tab_select(2, e))
+        self.bind("<Control-Key-3>", lambda e: self.on_shortcut_tab_select(3, e))
+        self.bind("<Control-Key-4>", lambda e: self.on_shortcut_tab_select(4, e))
+        self.bind("<Control-Key-5>", lambda e: self.on_shortcut_tab_select(5, e))
+        self.bind("<Command-Key-0>", lambda e: self.on_shortcut_tab_select(0, e))
+        self.bind("<Command-Key-1>", lambda e: self.on_shortcut_tab_select(1, e))
+        self.bind("<Command-Key-2>", lambda e: self.on_shortcut_tab_select(2, e))
+        self.bind("<Command-Key-3>", lambda e: self.on_shortcut_tab_select(3, e))
+        self.bind("<Command-Key-4>", lambda e: self.on_shortcut_tab_select(4, e))
+        self.bind("<Command-Key-5>", lambda e: self.on_shortcut_tab_select(5, e))
         self.bind("<F1>", lambda e: self.show_shortcuts_help())
         if hasattr(self, 'combo_year') and isinstance(self.combo_year, ttk.Combobox):
             self.bind("<F4>", lambda e: self.combo_year.event_generate('<Down>'))
@@ -6177,6 +6197,24 @@ class JournalCoverApp(tk.Tk):
         self.bind("<Command-V>", self.on_global_paste_shortcut)
         self.bind("<Shift-Insert>", self.on_global_paste_shortcut)
         self.bind("<KeyPress>", self.on_global_keypress, add="+")
+
+    def on_window_ctrl_s(self, event=None):
+        """Обработчик сохранения всех данных по сочетанию Ctrl+S / Cmd+S."""
+        if event and not self.is_ctrl_pressed(event):
+            return None
+        self.save_all_pending_data()
+        self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
+        return "break"
+
+    def on_shortcut_tab_select(self, idx: int, event=None):
+        """Переключение вкладки по Ctrl+0..5 только при действительно зажатом Ctrl."""
+        if event and not self.is_ctrl_pressed(event):
+            return None
+        try:
+            self.notebook.select(idx)
+        except Exception:
+            pass
+        return "break"
 
     def setup_month_tab(self, parent_frame, card_bg, month_info: dict, next_tab_idx: int = None):
         """Создает интерфейс вкладки месяца с 2 страницами: 1. Учёт посещаемости; 2. Содержание занятий по ДОП."""
@@ -6972,21 +7010,21 @@ class JournalCoverApp(tk.Tk):
             self.paste_mass_events_from_clipboard(page_num=page_num, start_idx=idx, event=event)
             return "break"
 
-        state = getattr(event, 'state', 0)
-        is_ctrl = bool(state & 0x4) or bool(state & 0x8) or bool(state & 0x40000)
+        if not self.is_ctrl_pressed(event):
+            return None
+
         code = getattr(event, 'keycode', 0)
         key = (getattr(event, 'keysym', '') or "").lower()
 
-        if is_ctrl:
-            if key in ('a', 'cyrillic_ef') or code == 65:
-                self.select_all_widget(event.widget)
-                return "break"
-            elif key in ('c', 'cyrillic_es') or code == 67:
-                self.copy_from_widget(event.widget)
-                return "break"
-            elif key in ('x', 'cyrillic_che') or code == 88:
-                self.cut_from_widget(event.widget)
-                return "break"
+        if key in ('a', 'cyrillic_ef') or code == 65:
+            self.select_all_widget(event.widget)
+            return "break"
+        elif key in ('c', 'cyrillic_es') or code == 67:
+            self.copy_from_widget(event.widget)
+            return "break"
+        elif key in ('x', 'cyrillic_che') or code == 88:
+            self.cut_from_widget(event.widget)
+            return "break"
 
         return None
 
@@ -7494,21 +7532,21 @@ class JournalCoverApp(tk.Tk):
             self.paste_creative_achievements_from_clipboard(page_num=page_num, start_idx=idx, col_idx=col_idx, event=event)
             return "break"
 
-        state = getattr(event, 'state', 0)
-        is_ctrl = bool(state & 0x4) or bool(state & 0x8) or bool(state & 0x40000)
+        if not self.is_ctrl_pressed(event):
+            return None
+
         code = getattr(event, 'keycode', 0)
         key = (getattr(event, 'keysym', '') or "").lower()
 
-        if is_ctrl:
-            if key in ('a', 'cyrillic_ef') or code == 65:
-                self.select_all_widget(event.widget)
-                return "break"
-            elif key in ('c', 'cyrillic_es') or code == 67:
-                self.copy_from_widget(event.widget)
-                return "break"
-            elif key in ('x', 'cyrillic_che') or code == 88:
-                self.cut_from_widget(event.widget)
-                return "break"
+        if key in ('a', 'cyrillic_ef') or code == 65:
+            self.select_all_widget(event.widget)
+            return "break"
+        elif key in ('c', 'cyrillic_es') or code == 67:
+            self.copy_from_widget(event.widget)
+            return "break"
+        elif key in ('x', 'cyrillic_che') or code == 88:
+            self.cut_from_widget(event.widget)
+            return "break"
 
         return None
 
@@ -8129,21 +8167,21 @@ class JournalCoverApp(tk.Tk):
             self.paste_students_list_from_clipboard(page_num=page_num, start_idx=idx, col_idx=col_idx, event=event)
             return "break"
 
-        state = getattr(event, 'state', 0)
-        is_ctrl = bool(state & 0x4) or bool(state & 0x8) or bool(state & 0x40000)
+        if not self.is_ctrl_pressed(event):
+            return None
+
         code = getattr(event, 'keycode', 0)
         key = (getattr(event, 'keysym', '') or "").lower()
 
-        if is_ctrl:
-            if key in ('a', 'cyrillic_ef') or code == 65:
-                self.select_all_widget(event.widget)
-                return "break"
-            elif key in ('c', 'cyrillic_es') or code == 67:
-                self.copy_from_widget(event.widget)
-                return "break"
-            elif key in ('x', 'cyrillic_che') or code == 88:
-                self.cut_from_widget(event.widget)
-                return "break"
+        if key in ('a', 'cyrillic_ef') or code == 65:
+            self.select_all_widget(event.widget)
+            return "break"
+        elif key in ('c', 'cyrillic_es') or code == 67:
+            self.copy_from_widget(event.widget)
+            return "break"
+        elif key in ('x', 'cyrillic_che') or code == 88:
+            self.cut_from_widget(event.widget)
+            return "break"
 
         return None
 
@@ -11039,20 +11077,23 @@ class JournalCoverApp(tk.Tk):
     def is_paste_event(self, event):
         """Определяет, нажато ли сочетание вставки (Ctrl+V / Cmd+V / Shift+Insert) на любой раскладке клавиатуры (RU / EN)."""
         state = getattr(event, 'state', 0)
-        is_ctrl = bool(state & 0x4) or bool(state & 0x8) or bool(state & 0x40000) or ('control' in str(getattr(event, 'keysym', '')).lower())
         code = getattr(event, 'keycode', 0)
         key = (getattr(event, 'keysym', '') or "").lower()
+
+        # Shift + Insert
+        if (state & 0x1) and (code == 45 or key == 'insert'):
+            return True
+
+        if not self.is_ctrl_pressed(event):
+            return False
+
         char = getattr(event, 'char', '')
 
-        if is_ctrl:
-            if code in (86, 54):
-                return True
-            if key in ('v', 'cyrillic_em', 'cyrillic_m'):
-                return True
-            if char in ('\x16', 'v', 'V', 'м', 'М'):
-                return True
-
-        if (state & 0x1) and (code == 45 or key == 'insert'):
+        if code in (86, 54):
+            return True
+        if key in ('v', 'cyrillic_em', 'cyrillic_m'):
+            return True
+        if char == '\x16':
             return True
 
         return False
@@ -11063,21 +11104,21 @@ class JournalCoverApp(tk.Tk):
             self.paste_students_from_clipboard(start_idx=idx, event=event, month_key=month_key)
             return "break"
 
-        state = getattr(event, 'state', 0)
-        is_ctrl = bool(state & 0x4) or bool(state & 0x8) or bool(state & 0x40000)
+        if not self.is_ctrl_pressed(event):
+            return None
+
         code = getattr(event, 'keycode', 0)
         key = (getattr(event, 'keysym', '') or "").lower()
 
-        if is_ctrl:
-            if key in ('a', 'cyrillic_ef') or code == 65:
-                self.select_all_widget(event.widget)
-                return "break"
-            elif key in ('c', 'cyrillic_es') or code == 67:
-                self.copy_from_widget(event.widget)
-                return "break"
-            elif key in ('x', 'cyrillic_che') or code == 88:
-                self.cut_from_widget(event.widget)
-                return "break"
+        if key in ('a', 'cyrillic_ef') or code == 65:
+            self.select_all_widget(event.widget)
+            return "break"
+        elif key in ('c', 'cyrillic_es') or code == 67:
+            self.copy_from_widget(event.widget)
+            return "break"
+        elif key in ('x', 'cyrillic_che') or code == 88:
+            self.cut_from_widget(event.widget)
+            return "break"
 
         return None
 
@@ -11092,21 +11133,21 @@ class JournalCoverApp(tk.Tk):
             self.paste_topics_from_clipboard(start_idx=idx, event=event, month_key=month_key)
             return "break"
 
-        state = getattr(event, 'state', 0)
-        is_ctrl = bool(state & 0x4) or bool(state & 0x8) or bool(state & 0x40000)
+        if not self.is_ctrl_pressed(event):
+            return None
+
         code = getattr(event, 'keycode', 0)
         key = (getattr(event, 'keysym', '') or "").lower()
 
-        if is_ctrl:
-            if key in ('a', 'cyrillic_ef') or code == 65:
-                self.select_all_widget(event.widget)
-                return "break"
-            elif key in ('c', 'cyrillic_es') or code == 67:
-                self.copy_from_widget(event.widget)
-                return "break"
-            elif key in ('x', 'cyrillic_che') or code == 88:
-                self.cut_from_widget(event.widget)
-                return "break"
+        if key in ('a', 'cyrillic_ef') or code == 65:
+            self.select_all_widget(event.widget)
+            return "break"
+        elif key in ('c', 'cyrillic_es') or code == 67:
+            self.copy_from_widget(event.widget)
+            return "break"
+        elif key in ('x', 'cyrillic_che') or code == 88:
+            self.cut_from_widget(event.widget)
+            return "break"
 
         return None
 
@@ -11117,6 +11158,8 @@ class JournalCoverApp(tk.Tk):
 
     def on_global_keypress(self, event):
         """Глобальный перехватчик клавиш окна для вставки Ctrl+V на любой раскладке клавиатуры."""
+        if not self.is_ctrl_pressed(event):
+            return None
         if self.is_paste_event(event):
             res = self.on_global_paste_shortcut(event)
             if res == "break":
