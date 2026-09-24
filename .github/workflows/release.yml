@@ -7,6 +7,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 1.0.1 or v1.0.1)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -32,10 +37,40 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Inject version from Git tag into app
+        shell: pwsh
+        run: |
+          # Определяем версию из ручного ввода, тега релиза или git ref
+          $rawTag = "${{ inputs.version }}"
+          if (-not $rawTag) {
+            $rawTag = "${{ github.event.release.tag_name }}"
+          }
+          if (-not $rawTag) {
+            $rawTag = "${{ github.ref_name }}"
+          }
+          Write-Host "Raw tag/ref detected: $rawTag"
+
+          # Убираем префикс 'v' (например, 'v1.0.1' -> '1.0.1')
+          $cleanVer = $rawTag.TrimStart('v').Trim()
+
+          if ($cleanVer -and $cleanVer -ne "main" -and $cleanVer -ne "master") {
+            Write-Host "Injecting release version: $cleanVer"
+            # 1. Записываем в version.txt
+            Set-Content -Path version.txt -Value $cleanVer -Encoding UTF8
+
+            # 2. Обновляем APP_VERSION в app_gui.py
+            $code = Get-Content -Path app_gui.py -Raw -Encoding UTF8
+            $code = $code -replace 'APP_VERSION = "[^"]+"', "APP_VERSION = `"$cleanVer`""
+            Set-Content -Path app_gui.py -Value $code -Encoding UTF8
+          } else {
+            Write-Host "Using existing version from code"
+          }
+
       - name: Build standalone EXE with PyInstaller
         run: |
           pyinstaller --noconfirm --onefile --windowed `
             --name "Journal_DOP" `
+            --add-data "version.txt;." `
             --add-data "README.md;." `
             --add-data "LICENSE;." `
             app_gui.py

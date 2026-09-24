@@ -32,10 +32,33 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 # Версия приложения и репозиторий GitHub для проверки обновлений
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 DEFAULT_GITHUB_REPO = "Romosol/Digital-LogBook-for-GBU-DO-RDOT"
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+
+def get_app_version() -> str:
+    """Определяет версию приложения (из version.txt или константы APP_VERSION)."""
+    candidates = []
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        candidates.append(os.path.join(sys._MEIPASS, "version.txt"))
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates.append(os.path.join(base_dir, "version.txt"))
+
+    for c in candidates:
+        if os.path.exists(c):
+            try:
+                with open(c, "r", encoding="utf-8") as f:
+                    v = f.read().strip()
+                    if v:
+                        return v.lstrip("v")
+            except Exception:
+                pass
+    return APP_VERSION
+
+
+APP_VERSION = get_app_version()
 
 
 def parse_version_tuple(v_str: str) -> tuple:
