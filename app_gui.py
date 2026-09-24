@@ -33,7 +33,7 @@ from tkinter import ttk, messagebox, filedialog
 
 # Версия приложения и репозиторий GitHub для проверки обновлений
 APP_VERSION = "1.0.0"
-DEFAULT_GITHUB_REPO = "romosol2012/journal-dop"
+DEFAULT_GITHUB_REPO = "Romosol/Digital-LogBook-for-GBU-DO-RDOT"
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
