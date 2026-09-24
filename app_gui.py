@@ -35,7 +35,20 @@ from tkinter import ttk, messagebox, filedialog
 APP_VERSION = "1.0.1"
 DEFAULT_GITHUB_REPO = "Romosol/Digital-LogBook-for-GBU-DO-RDOT"
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+def get_app_directory() -> str:
+    """
+    Возвращает постоянную директорию, где находится исполняемый файл:
+    - для скомпилированного .exe (PyInstaller): папка, где лежит сам .exe
+    - для обычного скрипта Python: папка со скриптом app_gui.py
+    """
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+APP_DIR = get_app_directory()
+CONFIG_FILE = os.path.join(APP_DIR, "config.json")
 
 
 def get_app_version() -> str:
@@ -43,8 +56,7 @@ def get_app_version() -> str:
     candidates = []
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
         candidates.append(os.path.join(sys._MEIPASS, "version.txt"))
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    candidates.append(os.path.join(base_dir, "version.txt"))
+    candidates.append(os.path.join(APP_DIR, "version.txt"))
 
     for c in candidates:
         if os.path.exists(c):
@@ -372,6 +384,7 @@ def load_config() -> dict:
 def save_config(config_data: dict) -> None:
     """Сохраняет конфигурацию и историю в config.json."""
     try:
+        os.makedirs(APP_DIR, exist_ok=True)
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config_data, f, ensure_ascii=False, indent=2)
     except Exception as e:
@@ -10510,15 +10523,20 @@ class JournalCoverApp(tk.Tk):
             self.config_data["org_name"] = self.org_var.get().strip()
         if hasattr(self, 'title_year_var'):
             self.config_data["title_academic_year"] = self.title_year_var.get().strip()
+        if hasattr(self, 'start_day_var'):
+            self.config_data["start_day_val"] = self.start_day_var.get().strip()
         if hasattr(self, 'start_month_var'):
             self.config_data["start_month"] = self.start_month_var.get().strip()
         if hasattr(self, 'start_year_var'):
             self.config_data["start_year_val"] = self.start_year_var.get().strip()
+        if hasattr(self, 'end_day_var'):
+            self.config_data["end_day_val"] = self.end_day_var.get().strip()
         if hasattr(self, 'end_month_var'):
             self.config_data["end_month"] = self.end_month_var.get().strip()
         if hasattr(self, 'end_year_var'):
             self.config_data["end_year_val"] = self.end_year_var.get().strip()
 
+        save_config(self.config_data)
         self.draw_title_page_preview()
         self.update_summary_lbl()
 
@@ -10532,11 +10550,16 @@ class JournalCoverApp(tk.Tk):
         # Мгновенная перерисовка листа А4 при каждом изменении года
         self.draw_cover_preview()
         self.update_summary_lbl()
+        cur_yr = val.strip()
+        if cur_yr:
+            self.config_data["last_academic_year"] = cur_yr
+            save_config(self.config_data)
 
     def on_teacher_input_changed(self, *args):
         """Мгновенно обновляет предпросмотр листа 'Оборот титульного листа' при вводе ФИО."""
         name = self.teacher_var.get().strip()
         self.config_data["teacher_name"] = name
+        save_config(self.config_data)
         self.draw_inside_cover_preview()
         self.update_summary_lbl()
 
@@ -10791,6 +10814,32 @@ class JournalCoverApp(tk.Tk):
     def save_all_pending_data(self):
         """Мгновенно сохраняет все измененные данные всех вкладок в config.json."""
         try:
+            # Обложка
+            if hasattr(self, 'year_var'):
+                val_yr = self.year_var.get().strip()
+                if val_yr:
+                    self.config_data["last_academic_year"] = val_yr
+            # Титульный лист
+            if hasattr(self, 'org_var'):
+                self.config_data["org_name"] = self.org_var.get().strip()
+            if hasattr(self, 'title_year_var'):
+                self.config_data["title_academic_year"] = self.title_year_var.get().strip()
+            if hasattr(self, 'start_day_var'):
+                self.config_data["start_day_val"] = self.start_day_var.get().strip()
+            if hasattr(self, 'start_month_var'):
+                self.config_data["start_month"] = self.start_month_var.get().strip()
+            if hasattr(self, 'start_year_var'):
+                self.config_data["start_year_val"] = self.start_year_var.get().strip()
+            if hasattr(self, 'end_day_var'):
+                self.config_data["end_day_val"] = self.end_day_var.get().strip()
+            if hasattr(self, 'end_month_var'):
+                self.config_data["end_month"] = self.end_month_var.get().strip()
+            if hasattr(self, 'end_year_var'):
+                self.config_data["end_year_val"] = self.end_year_var.get().strip()
+            # Оборот титульного
+            if hasattr(self, 'teacher_var'):
+                self.config_data["teacher_name"] = self.teacher_var.get().strip()
+            # Основные данные (стр. 3)
             self.auto_save_main_data()
             if hasattr(self, 'months_data'):
                 for m in MONTHS_CONFIG:
@@ -10808,8 +10857,8 @@ class JournalCoverApp(tk.Tk):
             if hasattr(self, 'work_hours_vars'):
                 self.auto_save_work_hours_data()
             save_config(self.config_data)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Предупреждение: Не удалось сохранить все данные: {e}")
 
     def on_window_close(self):
         """Гарантирует сохранение всех данных перед закрытием окна."""
