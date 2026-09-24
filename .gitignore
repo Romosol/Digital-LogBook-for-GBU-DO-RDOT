@@ -1,0 +1,41 @@
+# Web & Node.js
+node_modules/
+build/
+dist/
+coverage/
+package.json
+package-lock.json
+bun.lock
+tsconfig.json
+vite.config.ts
+index.html
+src/
+public/
+metadata.json
+
+# Environment & Logs
+*.log
+.env*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.spec
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Sensitive user data
+config.json
+
+# Generated Excel files
+*.xlsx
+
+# System files
+.DS_Store
+Thumbs.db
