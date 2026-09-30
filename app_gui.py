@@ -208,7 +208,7 @@ def load_config() -> dict:
             {"date": "", "content": "", "hours_teacher": "", "sign_teacher": "", "hours_acc": "", "sign_acc": ""}
             for _ in range(16)
         ],
-        # Учёт массовых мероприятий с обучающимися (стр. 30 и стр. 31 журнала, по 26 строк на каждой странице)
+        # Учёт массовых мероприятий с обучающимися (стр. 28 и стр. 29 журнала, по 26 строк на каждой странице)
         "mass_events_p1": [
             {"date": "", "content": "", "count": "", "location": "", "conducted_by": ""}
             for _ in range(26)
@@ -217,7 +217,7 @@ def load_config() -> dict:
             {"date": "", "content": "", "count": "", "location": "", "conducted_by": ""}
             for _ in range(26)
         ],
-        # Творческие достижения обучающихся (стр. 32 и стр. 33 журнала, по 26 строк на каждой странице)
+        # Творческие достижения обучающихся (стр. 30 и стр. 31 журнала, по 26 строк на каждой странице)
         "creative_achievements_p1": [
             {"student": "", "event": ""}
             for _ in range(26)
@@ -226,7 +226,7 @@ def load_config() -> dict:
             {"results": "", "works": ""}
             for _ in range(26)
         ],
-        # Список обучающихся (стр. 34-39 журнала, 6 страниц по 10 строк)
+        # Список обучающихся (стр. 32-37 журнала, 6 страниц по 10 строк)
         # Страницы 1, 3, 5: 6 столбцов (№, ФИО, Год рождения, Школа/класс, Район, Заключение врача)
         "students_list_p1": [
             {"student": "", "birth_year": "", "school_class": "", "district": "", "doctor_conclusion": ""}
@@ -343,7 +343,7 @@ def load_config() -> dict:
             if "september_topics" not in data or not isinstance(data["september_topics"], list):
                 data["september_topics"] = default_config["september_topics"]
 
-            # Проверка ключей Учёта массовых мероприятий (стр. 30 и стр. 31)
+            # Проверка ключей Учёта массовых мероприятий (стр. 28 и стр. 29)
             if "mass_events_p1" not in data or not isinstance(data["mass_events_p1"], list):
                 data["mass_events_p1"] = default_config["mass_events_p1"]
             else:
@@ -356,7 +356,7 @@ def load_config() -> dict:
                 while len(data["mass_events_p2"]) < 26:
                     data["mass_events_p2"].append({"date": "", "content": "", "count": "", "location": "", "conducted_by": ""})
 
-            # Проверка ключей Творческих достижений (стр. 32 и стр. 33)
+            # Проверка ключей Творческих достижений (стр. 30 и стр. 31)
             if "creative_achievements_p1" not in data or not isinstance(data["creative_achievements_p1"], list):
                 data["creative_achievements_p1"] = default_config["creative_achievements_p1"]
             else:
@@ -369,7 +369,7 @@ def load_config() -> dict:
                 while len(data["creative_achievements_p2"]) < 26:
                     data["creative_achievements_p2"].append({"results": "", "works": ""})
 
-            # Проверка ключей Списка обучающихся (стр. 34-39 журнала, 6 страниц по 10 строк)
+            # Проверка ключей Списка обучающихся (стр. 32-37 журнала, 6 страниц по 10 строк)
             for odd_k in ("students_list_p1", "students_list_p3", "students_list_p5"):
                 if odd_k not in data or not isinstance(data[odd_k], list):
                     data[odd_k] = default_config[odd_k]
@@ -1426,14 +1426,14 @@ def generate_excel_september_spread(
 
 def populate_mass_events_sheet(
     ws,
-    page_number: int = 30,
+    page_number: int = 28,
     events: list = None
 ):
     """
-    Форматирование листа 'Учёт массовых мероприятий с обучающимися' (стр. 30 или 31 журнала) А4.
+    Форматирование листа 'Учёт массовых мероприятий с обучающимися' (стр. 28 или 29 журнала) А4.
     Таблица из 5 столбцов и 26 строк.
-    Стр. 30: четная страница разворота (корешок 30 мм СПРАВА, номер страницы 30 СЛЕВА).
-    Стр. 31: нечетная страница разворота (корешок 30 мм СЛЕВА, номер страницы 31 СПРАВА).
+    Стр. 28: четная страница разворота (корешок 30 мм СПРАВА, номер страницы 28 СЛЕВА).
+    Стр. 29: нечетная страница разворота (корешок 30 мм СЛЕВА, номер страницы 29 СПРАВА).
     """
     ws.title = f"Мероприятия (стр. {page_number})"
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
@@ -1443,11 +1443,11 @@ def populate_mass_events_sheet(
     ws.sheet_properties.pageSetUpPr.fitToPage = True
 
     if page_number % 2 == 0:
-        # Четная страница (левая полоса разворота, стр. 30):
+        # Четная страница (левая полоса разворота, стр. 28):
         # отступ 30 мм СПРАВА под корешок (1.18 дюйма), слева 10 мм (0.39 дюйма)
         ws.page_margins = PageMargins(left=0.39, right=1.18, top=0.39, bottom=0.39, header=0.15, footer=0.15)
     else:
-        # Нечетная страница (правая полоса разворота, стр. 31):
+        # Нечетная страница (правая полоса разворота, стр. 29):
         # отступ 30 мм СЛЕВА под корешок (1.18 дюйма), справа 10 мм (0.39 дюйма)
         ws.page_margins = PageMargins(left=1.18, right=0.39, top=0.39, bottom=0.39, header=0.15, footer=0.15)
 
@@ -1559,52 +1559,52 @@ def populate_mass_events_sheet(
 
 
 def generate_excel_mass_events_p1(save_path: str, events: list = None) -> bool:
-    """Генерация печатного листа 'Учёт массовых мероприятий' (стр. 30) А4."""
+    """Генерация печатного листа 'Учёт массовых мероприятий' (стр. 28) А4."""
     if not OPENPYXL_AVAILABLE:
         raise RuntimeError("Библиотека openpyxl не установлена.\nВыполните в терминале:\npip install openpyxl")
     wb = Workbook()
     ws = wb.active
-    populate_mass_events_sheet(ws, page_number=30, events=events)
+    populate_mass_events_sheet(ws, page_number=28, events=events)
     wb.save(save_path)
     return True
 
 
 def generate_excel_mass_events_p2(save_path: str, events: list = None) -> bool:
-    """Генерация печатного листа 'Учёт массовых мероприятий' (стр. 31) А4."""
+    """Генерация печатного листа 'Учёт массовых мероприятий' (стр. 29) А4."""
     if not OPENPYXL_AVAILABLE:
         raise RuntimeError("Библиотека openpyxl не установлена.\nВыполните в терминале:\npip install openpyxl")
     wb = Workbook()
     ws = wb.active
-    populate_mass_events_sheet(ws, page_number=31, events=events)
+    populate_mass_events_sheet(ws, page_number=29, events=events)
     wb.save(save_path)
     return True
 
 
 def generate_excel_mass_events_spread(save_path: str, events_p1: list = None, events_p2: list = None) -> bool:
-    """Генерация разворота 'Учёт массовых мероприятий' (стр. 30 и 31) в один файл Excel."""
+    """Генерация разворота 'Учёт массовых мероприятий' (стр. 28 и 29) в один файл Excel."""
     if not OPENPYXL_AVAILABLE:
         raise RuntimeError("Библиотека openpyxl не установлена.\nВыполните в терминале:\npip install openpyxl")
     wb = Workbook()
     ws1 = wb.active
-    populate_mass_events_sheet(ws1, page_number=30, events=events_p1)
-    ws2 = wb.create_sheet(title="Мероприятия (стр. 31)")
-    populate_mass_events_sheet(ws2, page_number=31, events=events_p2)
+    populate_mass_events_sheet(ws1, page_number=28, events=events_p1)
+    ws2 = wb.create_sheet(title="Мероприятия (стр. 29)")
+    populate_mass_events_sheet(ws2, page_number=29, events=events_p2)
     wb.save(save_path)
     return True
 
 
 def populate_creative_achievements_p1_sheet(
     ws,
-    page_number: int = 32,
+    page_number: int = 30,
     items: list = None
 ):
     """
-    Форматирование листа 'Творческие достижения' (стр. 32 журнала) А4.
+    Форматирование листа 'Творческие достижения' (стр. 30 журнала) А4.
     Таблица из 3 столбцов и 26 строк:
     1) № п/п
     2) Фамилия, имя обучающегося
     3) В каких соревнованиях, смотрах, спектаклях и др. мероприятиях участвовал
-    Четная страница разворота (корешок 30 мм СПРАВА, номер страницы 32 СЛЕВА).
+    Четная страница разворота (корешок 30 мм СПРАВА, номер страницы 30 СЛЕВА).
     """
     ws.title = f"Достижения (стр. {page_number})"
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
@@ -1613,7 +1613,7 @@ def populate_creative_achievements_p1_sheet(
     ws.page_setup.fitToHeight = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True
 
-    # Четная страница (левая полоса разворота, стр. 32):
+    # Четная страница (левая полоса разворота, стр. 30):
     # отступ 30 мм СПРАВА под корешок (1.18 дюйма), слева 10 мм (0.39 дюйма)
     ws.page_margins = PageMargins(left=0.39, right=1.18, top=0.39, bottom=0.39, header=0.15, footer=0.15)
 
@@ -1692,15 +1692,15 @@ def populate_creative_achievements_p1_sheet(
 
 def populate_creative_achievements_p2_sheet(
     ws,
-    page_number: int = 33,
+    page_number: int = 31,
     items: list = None
 ):
     """
-    Форматирование листа 'Творческие достижения - Обучающихся' (стр. 33 журнала) А4.
+    Форматирование листа 'Творческие достижения - Обучающихся' (стр. 31 журнала) А4.
     Таблица из 2 столбцов и 26 строк:
     1) Результаты (полученное звание, разряд и другие результаты)
     2) Работы, выполненные объединением по заказам или инициативно
-    Нечетная страница разворота (корешок 30 мм СЛЕВА, номер страницы 33 СПРАВА).
+    Нечетная страница разворота (корешок 30 мм СЛЕВА, номер страницы 31 СПРАВА).
     """
     ws.title = f"Достижения (стр. {page_number})"
     ws.page_setup.paperSize = ws.PAPERSIZE_A4
@@ -1709,7 +1709,7 @@ def populate_creative_achievements_p2_sheet(
     ws.page_setup.fitToHeight = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True
 
-    # Нечетная страница (правая полоса разворота, стр. 33):
+    # Нечетная страница (правая полоса разворота, стр. 31):
     # отступ 30 мм СЛЕВА под корешок (1.18 дюйма), справа 10 мм (0.39 дюйма)
     ws.page_margins = PageMargins(left=1.18, right=0.39, top=0.39, bottom=0.39, header=0.15, footer=0.15)
 
@@ -1777,49 +1777,53 @@ def populate_creative_achievements_p2_sheet(
         cb.border = thin_border
 
 
-def generate_excel_creative_achievements_p1(save_path: str, items: list = None) -> bool:
-    """Генерация печатного листа 'Творческие достижения' (стр. 32) А4."""
+def generate_excel_creative_achievements_p1(save_path: str, items: list = None, achievements: list = None) -> bool:
+    """Генерация печатного листа 'Творческие достижения' (стр. 30) А4."""
     if not OPENPYXL_AVAILABLE:
         raise RuntimeError("Библиотека openpyxl не установлена.\nВыполните в терминале:\npip install openpyxl")
     wb = Workbook()
     ws = wb.active
-    populate_creative_achievements_p1_sheet(ws, page_number=32, items=items)
+    data = items if items is not None else achievements
+    populate_creative_achievements_p1_sheet(ws, page_number=30, items=data)
     wb.save(save_path)
     return True
 
 
-def generate_excel_creative_achievements_p2(save_path: str, items: list = None) -> bool:
-    """Генерация печатного листа 'Творческие достижения - Обучающихся' (стр. 33) А4."""
+def generate_excel_creative_achievements_p2(save_path: str, items: list = None, achievements: list = None) -> bool:
+    """Генерация печатного листа 'Творческие достижения - Обучающихся' (стр. 31) А4."""
     if not OPENPYXL_AVAILABLE:
         raise RuntimeError("Библиотека openpyxl не установлена.\nВыполните в терминале:\npip install openpyxl")
     wb = Workbook()
     ws = wb.active
-    populate_creative_achievements_p2_sheet(ws, page_number=33, items=items)
+    data = items if items is not None else achievements
+    populate_creative_achievements_p2_sheet(ws, page_number=31, items=data)
     wb.save(save_path)
     return True
 
 
-def generate_excel_creative_achievements_spread(save_path: str, items_p1: list = None, items_p2: list = None) -> bool:
-    """Генерация разворота 'Творческие достижения' (стр. 32 и 33) в один файл Excel."""
+def generate_excel_creative_achievements_spread(save_path: str, items_p1: list = None, items_p2: list = None, achievements_p1: list = None, achievements_p2: list = None) -> bool:
+    """Генерация разворота 'Творческие достижения' (стр. 30 и 31) в один файл Excel."""
     if not OPENPYXL_AVAILABLE:
         raise RuntimeError("Библиотека openpyxl не установлена.\nВыполните в терминале:\npip install openpyxl")
     wb = Workbook()
     ws1 = wb.active
-    populate_creative_achievements_p1_sheet(ws1, page_number=32, items=items_p1)
-    ws2 = wb.create_sheet(title="Достижения (стр. 33)")
-    populate_creative_achievements_p2_sheet(ws2, page_number=33, items=items_p2)
+    data_p1 = items_p1 if items_p1 is not None else achievements_p1
+    data_p2 = items_p2 if items_p2 is not None else achievements_p2
+    populate_creative_achievements_p1_sheet(ws1, page_number=30, items=data_p1)
+    ws2 = wb.create_sheet(title="Достижения (стр. 31)")
+    populate_creative_achievements_p2_sheet(ws2, page_number=31, items=data_p2)
     wb.save(save_path)
     return True
 
 
 def populate_students_list_odd_sheet(
     ws,
-    page_number: int = 34,
+    page_number: int = 32,
     start_student_no: int = 1,
     items: list = None
 ):
     """
-    Форматирование листа 'Список обучающихся в объединении' (стр. 34, 36, 38 журнала) А4.
+    Форматирование листа 'Список обучающихся в объединении' (стр. 32, 34, 36 журнала) А4.
     Таблица из 6 столбцов и 10 строк:
     1) № п/п
     2) Фамилия, имя обучающегося
@@ -1945,11 +1949,11 @@ def populate_students_list_odd_sheet(
 
 def populate_students_list_even_sheet(
     ws,
-    page_number: int = 35,
+    page_number: int = 33,
     items: list = None
 ):
     """
-    Форматирование листа 'Сведения о родителях' (стр. 35, 37, 39 журнала) А4.
+    Форматирование листа 'Сведения о родителях' (стр. 33, 35, 37 журнала) А4.
     Таблица из 5 столбцов и 10 строк:
     1) Домашний адрес, телефон
     2) Фамилия, имя, отчество родителей, телефон
@@ -2064,12 +2068,12 @@ def populate_students_list_even_sheet(
 
 
 def generate_excel_students_list_page(save_path: str, page_num: int = 1, items: list = None) -> bool:
-    """Генерация отдельного листа страницы 'Список обучающихся' (стр. 1..6 вкладки, в журнале стр. 34..39) в Excel."""
+    """Генерация отдельного листа страницы 'Список обучающихся' (стр. 1..6 вкладки, в журнале стр. 32..37) в Excel."""
     if not OPENPYXL_AVAILABLE:
         raise RuntimeError("Библиотека openpyxl не установлена.\nВыполните в терминале:\npip install openpyxl")
     wb = Workbook()
     ws = wb.active
-    journal_page_no = 33 + page_num
+    journal_page_no = 31 + page_num
     if page_num in (1, 3, 5):
         start_no = 1 if page_num == 1 else (11 if page_num == 3 else 21)
         populate_students_list_odd_sheet(ws, page_number=journal_page_no, start_student_no=start_no, items=items)
@@ -2080,22 +2084,22 @@ def generate_excel_students_list_page(save_path: str, page_num: int = 1, items: 
 
 
 def generate_excel_students_list_spread(save_path: str, spread_idx: int = 1, items_odd: list = None, items_even: list = None) -> bool:
-    """Генерация разворота 'Список обучающихся' (разворот 1: стр. 34-35, разворот 2: стр. 36-37, разворот 3: стр. 38-39)."""
+    """Генерация разворота 'Список обучающихся' (разворот 1: стр. 32-33, разворот 2: стр. 34-35, разворот 3: стр. 36-37)."""
     if not OPENPYXL_AVAILABLE:
         raise RuntimeError("Библиотека openpyxl не установлена.\nВыполните в терминале:\npip install openpyxl")
     wb = Workbook()
     ws1 = wb.active
     if spread_idx == 1:
-        p_odd = 34
-        p_even = 35
+        p_odd = 32
+        p_even = 33
         start_no = 1
     elif spread_idx == 2:
-        p_odd = 36
-        p_even = 37
+        p_odd = 34
+        p_even = 35
         start_no = 11
     else:
-        p_odd = 38
-        p_even = 39
+        p_odd = 36
+        p_even = 37
         start_no = 21
 
     populate_students_list_odd_sheet(ws1, page_number=p_odd, start_student_no=start_no, items=items_odd)
@@ -2106,29 +2110,29 @@ def generate_excel_students_list_spread(save_path: str, spread_idx: int = 1, ite
 
 
 def generate_excel_students_list_all(save_path: str, all_pages: dict = None) -> bool:
-    """Генерация всех 6 страниц 'Список обучающихся' (стр. 34..39 журнала) в один файл Excel."""
+    """Генерация всех 6 страниц 'Список обучающихся' (стр. 32..37 журнала) в один файл Excel."""
     if not OPENPYXL_AVAILABLE:
         raise RuntimeError("Библиотека openpyxl не установлена.\nВыполните в терминале:\npip install openpyxl")
     wb = Workbook()
     pages = all_pages or {}
 
     ws1 = wb.active
-    populate_students_list_odd_sheet(ws1, page_number=34, start_student_no=1, items=pages.get("students_list_p1"))
+    populate_students_list_odd_sheet(ws1, page_number=32, start_student_no=1, items=pages.get("students_list_p1"))
 
-    ws2 = wb.create_sheet(title="Обучающиеся (стр. 35)")
-    populate_students_list_even_sheet(ws2, page_number=35, items=pages.get("students_list_p2"))
+    ws2 = wb.create_sheet(title="Обучающиеся (стр. 33)")
+    populate_students_list_even_sheet(ws2, page_number=33, items=pages.get("students_list_p2"))
 
-    ws3 = wb.create_sheet(title="Обучающиеся (стр. 36)")
-    populate_students_list_odd_sheet(ws3, page_number=36, start_student_no=11, items=pages.get("students_list_p3"))
+    ws3 = wb.create_sheet(title="Обучающиеся (стр. 34)")
+    populate_students_list_odd_sheet(ws3, page_number=34, start_student_no=11, items=pages.get("students_list_p3"))
 
-    ws4 = wb.create_sheet(title="Обучающиеся (стр. 37)")
-    populate_students_list_even_sheet(ws4, page_number=37, items=pages.get("students_list_p4"))
+    ws4 = wb.create_sheet(title="Обучающиеся (стр. 35)")
+    populate_students_list_even_sheet(ws4, page_number=35, items=pages.get("students_list_p4"))
 
-    ws5 = wb.create_sheet(title="Обучающиеся (стр. 38)")
-    populate_students_list_odd_sheet(ws5, page_number=38, start_student_no=21, items=pages.get("students_list_p5"))
+    ws5 = wb.create_sheet(title="Обучающиеся (стр. 36)")
+    populate_students_list_odd_sheet(ws5, page_number=36, start_student_no=21, items=pages.get("students_list_p5"))
 
-    ws6 = wb.create_sheet(title="Обучающиеся (стр. 39)")
-    populate_students_list_even_sheet(ws6, page_number=39, items=pages.get("students_list_p6"))
+    ws6 = wb.create_sheet(title="Обучающиеся (стр. 37)")
+    populate_students_list_even_sheet(ws6, page_number=37, items=pages.get("students_list_p6"))
 
     wb.save(save_path)
     return True
@@ -2966,27 +2970,27 @@ def generate_excel_full_journal(
         ws_p2 = wb.create_sheet(title=f"{m_name} (стр. {p2_no})")
         populate_month_page2_sheet(ws_p2, month_name=m_name, page_number=p2_no, topics=m_top)
 
-    # 29. Учёт массовых мероприятий с обучающимися (стр. 30)
+    # 29. Учёт массовых мероприятий с обучающимися (стр. 28)
     ev_p1 = kwargs.get("mass_events_p1")
-    ws_ev1 = wb.create_sheet(title="Мероприятия (стр. 30)")
-    populate_mass_events_sheet(ws_ev1, page_number=30, events=ev_p1)
+    ws_ev1 = wb.create_sheet(title="Мероприятия (стр. 28)")
+    populate_mass_events_sheet(ws_ev1, page_number=28, events=ev_p1)
 
-    # 30. Учёт массовых мероприятий с обучающимися (стр. 31)
+    # 30. Учёт массовых мероприятий с обучающимися (стр. 29)
     ev_p2 = kwargs.get("mass_events_p2")
-    ws_ev2 = wb.create_sheet(title="Мероприятия (стр. 31)")
-    populate_mass_events_sheet(ws_ev2, page_number=31, events=ev_p2)
+    ws_ev2 = wb.create_sheet(title="Мероприятия (стр. 29)")
+    populate_mass_events_sheet(ws_ev2, page_number=29, events=ev_p2)
 
-    # 31. Творческие достижения обучающихся (стр. 32)
+    # 31. Творческие достижения обучающихся (стр. 30)
     cr_p1 = kwargs.get("creative_achievements_p1")
-    ws_cr1 = wb.create_sheet(title="Достижения (стр. 32)")
-    populate_creative_achievements_p1_sheet(ws_cr1, page_number=32, items=cr_p1)
+    ws_cr1 = wb.create_sheet(title="Достижения (стр. 30)")
+    populate_creative_achievements_p1_sheet(ws_cr1, page_number=30, items=cr_p1)
 
-    # 32. Творческие достижения обучающихся (стр. 33)
+    # 32. Творческие достижения обучающихся (стр. 31)
     cr_p2 = kwargs.get("creative_achievements_p2")
-    ws_cr2 = wb.create_sheet(title="Достижения (стр. 33)")
-    populate_creative_achievements_p2_sheet(ws_cr2, page_number=33, items=cr_p2)
+    ws_cr2 = wb.create_sheet(title="Достижения (стр. 31)")
+    populate_creative_achievements_p2_sheet(ws_cr2, page_number=31, items=cr_p2)
 
-    # 33..38. Список обучающихся (стр. 34-39)
+    # 33..38. Список обучающихся (стр. 32-37)
     st_p1 = kwargs.get("students_list_p1")
     st_p2 = kwargs.get("students_list_p2")
     st_p3 = kwargs.get("students_list_p3")
@@ -2994,23 +2998,23 @@ def generate_excel_full_journal(
     st_p5 = kwargs.get("students_list_p5")
     st_p6 = kwargs.get("students_list_p6")
 
-    ws_st1 = wb.create_sheet(title="Обучающиеся (стр. 34)")
-    populate_students_list_odd_sheet(ws_st1, page_number=34, start_student_no=1, items=st_p1)
+    ws_st1 = wb.create_sheet(title="Обучающиеся (стр. 32)")
+    populate_students_list_odd_sheet(ws_st1, page_number=32, start_student_no=1, items=st_p1)
 
-    ws_st2 = wb.create_sheet(title="Обучающиеся (стр. 35)")
-    populate_students_list_even_sheet(ws_st2, page_number=35, items=st_p2)
+    ws_st2 = wb.create_sheet(title="Обучающиеся (стр. 33)")
+    populate_students_list_even_sheet(ws_st2, page_number=33, items=st_p2)
 
-    ws_st3 = wb.create_sheet(title="Обучающиеся (стр. 36)")
-    populate_students_list_odd_sheet(ws_st3, page_number=36, start_student_no=11, items=st_p3)
+    ws_st3 = wb.create_sheet(title="Обучающиеся (стр. 34)")
+    populate_students_list_odd_sheet(ws_st3, page_number=34, start_student_no=11, items=st_p3)
 
-    ws_st4 = wb.create_sheet(title="Обучающиеся (стр. 37)")
-    populate_students_list_even_sheet(ws_st4, page_number=37, items=st_p4)
+    ws_st4 = wb.create_sheet(title="Обучающиеся (стр. 35)")
+    populate_students_list_even_sheet(ws_st4, page_number=35, items=st_p4)
 
-    ws_st5 = wb.create_sheet(title="Обучающиеся (стр. 38)")
-    populate_students_list_odd_sheet(ws_st5, page_number=38, start_student_no=21, items=st_p5)
+    ws_st5 = wb.create_sheet(title="Обучающиеся (стр. 36)")
+    populate_students_list_odd_sheet(ws_st5, page_number=36, start_student_no=21, items=st_p5)
 
-    ws_st6 = wb.create_sheet(title="Обучающиеся (стр. 39)")
-    populate_students_list_even_sheet(ws_st6, page_number=39, items=st_p6)
+    ws_st6 = wb.create_sheet(title="Обучающиеся (стр. 37)")
+    populate_students_list_even_sheet(ws_st6, page_number=37, items=st_p6)
 
     # 39..40. Список обучающихся, прошедших инструктаж по технике безопасности (стр. 38 и 39)
     sb_p1 = kwargs.get("safety_briefing_p1")
@@ -3196,7 +3200,7 @@ class JournalCoverApp(tk.Tk):
         self.september_student_widgets = self.months_data["september"]["student_widgets"]
         self.september_topic_widgets = self.months_data["september"]["topic_widgets"]
 
-        # Инициализация данных для Учёта массовых мероприятий (стр. 30 и стр. 31, 26 строк на каждой странице)
+        # Инициализация данных для Учёта массовых мероприятий (стр. 28 и стр. 29, 26 строк на каждой странице)
         self.mass_events_p1_vars = []
         saved_ev_p1 = self.config_data.get("mass_events_p1", [])
         for i in range(26):
@@ -3230,7 +3234,7 @@ class JournalCoverApp(tk.Tk):
         self.last_saved_events_p2_file = None
         self.last_saved_events_spread_file = None
 
-        # Инициализация данных для Творческих достижений (стр. 32 и стр. 33, 26 строк на каждой странице)
+        # Инициализация данных для Творческих достижений (стр. 30 и стр. 31, 26 строк на каждой странице)
         self.creative_achievements_p1_vars = []
         saved_cr_p1 = self.config_data.get("creative_achievements_p1", [])
         for i in range(26):
@@ -3258,7 +3262,7 @@ class JournalCoverApp(tk.Tk):
         self.last_saved_creative_p2_file = None
         self.last_saved_creative_spread_file = None
 
-        # Инициализация данных для Списка обучающихся (стр. 34-39 журнала, 6 страниц по 10 строк)
+        # Инициализация данных для Списка обучающихся (стр. 32-37 журнала, 6 страниц по 10 строк)
         # Страницы 1, 3, 5: 6 колонок (№, ФИО, Год рожд., Школа/класс, Район, Врач)
         # Страницы 2, 4, 6: 5 колонок (Адрес/тел, Родители/тел, Дата вступления, Выбыл, Примечания)
         self.students_list_pages_vars = {p: [] for p in range(1, 7)}
@@ -5221,7 +5225,7 @@ class JournalCoverApp(tk.Tk):
                 tab_month._build_func = (lambda f=tab_month, info=m, n=next_tab: self.setup_month_tab(f, card_bg, info, next_tab_idx=n))
 
         # =========================================================================
-        # ВКЛАДКА 16: Учёт массовых мероприятий с обучающимися (стр. 30 и 31 журнала)
+        # ВКЛАДКА 16: Учёт массовых мероприятий с обучающимися (стр. 28 и 29 журнала)
         # =========================================================================
         self.tab_mass_events = tk.Frame(self.notebook, bg=card_bg, padx=12, pady=10)
         self.notebook.add(self.tab_mass_events, text="Мероприятия")
@@ -5229,7 +5233,7 @@ class JournalCoverApp(tk.Tk):
         self.tab_mass_events._build_func = lambda: self.setup_mass_events_tab(self.tab_mass_events, card_bg, next_tab_idx=17)
 
         # =========================================================================
-        # ВКЛАДКА 17: Творческие достижения обучающихся (стр. 32 и 33 журнала)
+        # ВКЛАДКА 17: Творческие достижения обучающихся (стр. 30 и 31 журнала)
         # =========================================================================
         self.tab_creative = tk.Frame(self.notebook, bg=card_bg, padx=12, pady=10)
         self.notebook.add(self.tab_creative, text="Творческие достижения")
@@ -5237,7 +5241,7 @@ class JournalCoverApp(tk.Tk):
         self.tab_creative._build_func = lambda: self.setup_creative_achievements_tab(self.tab_creative, card_bg, next_tab_idx=18)
 
         # =========================================================================
-        # ВКЛАДКА 18: Список обучающихся (стр. 34-39 журнала, 6 страниц)
+        # ВКЛАДКА 18: Список обучающихся (стр. 32-37 журнала, 6 страниц)
         # =========================================================================
         self.tab_students_list = tk.Frame(self.notebook, bg=card_bg, padx=12, pady=10)
         self.notebook.add(self.tab_students_list, text="Список обучающихся")
@@ -5611,10 +5615,10 @@ class JournalCoverApp(tk.Tk):
         self.btn_open_month_spread.pack(fill=tk.X)
         self.btn_open_sept_spread = self.btn_open_month_spread
 
-        # Сетка 3: Экспорт Учёта массовых мероприятий (стр. 30, стр. 31, разворот)
+        # Сетка 3: Экспорт Учёта массовых мероприятий (стр. 28, стр. 29, разворот)
         events_export_frame = tk.LabelFrame(
             export_box,
-            text=" Экспорт страниц «Учёт массовых мероприятий» (стр. 30 и 31) ",
+            text=" Экспорт страниц «Учёт массовых мероприятий» (стр. 28 и 29) ",
             font=(self.font_sans, 9, "bold"),
             bg=card_bg,
             fg="#1e293b",
@@ -5628,13 +5632,13 @@ class JournalCoverApp(tk.Tk):
         export_events_grid = tk.Frame(events_export_frame, bg=card_bg)
         export_events_grid.pack(fill=tk.X, pady=(0, 4))
 
-        # 1. Мероприятия (стр. 1 - стр. 30 журнала)
+        # 1. Мероприятия (стр. 1 - стр. 28 журнала)
         btn_col_ev1 = tk.Frame(export_events_grid, bg=card_bg)
         btn_col_ev1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
 
         btn_gen_ev1 = tk.Button(
             btn_col_ev1,
-            text="💾 Мероприятия (стр. 30)",
+            text="💾 Мероприятия (стр. 28)",
             command=self.on_generate_events_p1_click,
             font=(self.font_sans, 9, "bold"),
             bg="#0891b2",
@@ -5650,7 +5654,7 @@ class JournalCoverApp(tk.Tk):
 
         self.btn_open_events_p1 = tk.Button(
             btn_col_ev1,
-            text="📂 Открыть стр. 30",
+            text="📂 Открыть стр. 28",
             command=self.on_open_events_p1_file_click,
             font=(self.font_sans, 8),
             bg="#e2e8f0",
@@ -5663,13 +5667,13 @@ class JournalCoverApp(tk.Tk):
         )
         self.btn_open_events_p1.pack(fill=tk.X)
 
-        # 2. Мероприятия (стр. 2 - стр. 31 журнала)
+        # 2. Мероприятия (стр. 2 - стр. 29 журнала)
         btn_col_ev2 = tk.Frame(export_events_grid, bg=card_bg)
         btn_col_ev2.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(2, 2))
 
         btn_gen_ev2 = tk.Button(
             btn_col_ev2,
-            text="💾 Мероприятия (стр. 31)",
+            text="💾 Мероприятия (стр. 29)",
             command=self.on_generate_events_p2_click,
             font=(self.font_sans, 9, "bold"),
             bg="#0284c7",
@@ -5685,7 +5689,7 @@ class JournalCoverApp(tk.Tk):
 
         self.btn_open_events_p2 = tk.Button(
             btn_col_ev2,
-            text="📂 Открыть стр. 31",
+            text="📂 Открыть стр. 29",
             command=self.on_open_events_p2_file_click,
             font=(self.font_sans, 8),
             bg="#e2e8f0",
@@ -5698,13 +5702,13 @@ class JournalCoverApp(tk.Tk):
         )
         self.btn_open_events_p2.pack(fill=tk.X)
 
-        # 3. Разворот мероприятий (стр. 30 и 31 журнала)
+        # 3. Разворот мероприятий (стр. 28 и 29 журнала)
         btn_col_ev_spread = tk.Frame(export_events_grid, bg=card_bg)
         btn_col_ev_spread.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
 
         btn_gen_ev_spread = tk.Button(
             btn_col_ev_spread,
-            text="💾 Разворот (стр. 30-31)",
+            text="💾 Разворот (стр. 28-29)",
             command=self.on_generate_events_spread_click,
             font=(self.font_sans, 9, "bold"),
             bg="#4f46e5",
@@ -5733,10 +5737,10 @@ class JournalCoverApp(tk.Tk):
         )
         self.btn_open_events_spread.pack(fill=tk.X)
 
-        # Сетка 4: Экспорт страниц «Творческие достижения» (стр. 32, стр. 33, разворот)
+        # Сетка 4: Экспорт страниц «Творческие достижения» (стр. 30, стр. 31, разворот)
         creative_export_frame = tk.LabelFrame(
             export_box,
-            text=" Экспорт страниц «Творческие достижения» (стр. 32 и 33) ",
+            text=" Экспорт страниц «Творческие достижения» (стр. 30 и 31) ",
             font=(self.font_sans, 9, "bold"),
             bg=card_bg,
             fg="#1e293b",
@@ -5750,13 +5754,13 @@ class JournalCoverApp(tk.Tk):
         export_creative_grid = tk.Frame(creative_export_frame, bg=card_bg)
         export_creative_grid.pack(fill=tk.X, pady=(0, 4))
 
-        # 1. Творческие достижения (стр. 1 - стр. 32 журнала)
+        # 1. Творческие достижения (стр. 1 - стр. 30 журнала)
         btn_col_cr1 = tk.Frame(export_creative_grid, bg=card_bg)
         btn_col_cr1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
 
         btn_gen_cr1 = tk.Button(
             btn_col_cr1,
-            text="💾 Достижения (стр. 32)",
+            text="💾 Достижения (стр. 30)",
             command=self.on_generate_creative_p1_click,
             font=(self.font_sans, 9, "bold"),
             bg="#0d9488",
@@ -5772,7 +5776,7 @@ class JournalCoverApp(tk.Tk):
 
         self.btn_open_creative_p1 = tk.Button(
             btn_col_cr1,
-            text="📂 Открыть стр. 32",
+            text="📂 Открыть стр. 30",
             command=self.on_open_creative_p1_file_click,
             font=(self.font_sans, 8),
             bg="#e2e8f0",
@@ -5785,13 +5789,13 @@ class JournalCoverApp(tk.Tk):
         )
         self.btn_open_creative_p1.pack(fill=tk.X)
 
-        # 2. Обучающихся (стр. 2 - стр. 33 журнала)
+        # 2. Обучающихся (стр. 2 - стр. 31 журнала)
         btn_col_cr2 = tk.Frame(export_creative_grid, bg=card_bg)
         btn_col_cr2.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(2, 2))
 
         btn_gen_cr2 = tk.Button(
             btn_col_cr2,
-            text="💾 Достижения (стр. 33)",
+            text="💾 Достижения (стр. 31)",
             command=self.on_generate_creative_p2_click,
             font=(self.font_sans, 9, "bold"),
             bg="#14b8a6",
@@ -5807,7 +5811,7 @@ class JournalCoverApp(tk.Tk):
 
         self.btn_open_creative_p2 = tk.Button(
             btn_col_cr2,
-            text="📂 Открыть стр. 33",
+            text="📂 Открыть стр. 31",
             command=self.on_open_creative_p2_file_click,
             font=(self.font_sans, 8),
             bg="#e2e8f0",
@@ -5820,13 +5824,13 @@ class JournalCoverApp(tk.Tk):
         )
         self.btn_open_creative_p2.pack(fill=tk.X)
 
-        # 3. Разворот достижений (стр. 32 и 33 журнала)
+        # 3. Разворот достижений (стр. 30 и 31 журнала)
         btn_col_cr_spread = tk.Frame(export_creative_grid, bg=card_bg)
         btn_col_cr_spread.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(4, 0))
 
         btn_gen_cr_spread = tk.Button(
             btn_col_cr_spread,
-            text="💾 Разворот (стр. 32-33)",
+            text="💾 Разворот (стр. 30-31)",
             command=self.on_generate_creative_spread_click,
             font=(self.font_sans, 9, "bold"),
             bg="#4f46e5",
@@ -5855,10 +5859,10 @@ class JournalCoverApp(tk.Tk):
         )
         self.btn_open_creative_spread.pack(fill=tk.X)
 
-        # Сетка 5: Экспорт страниц «Список обучающихся» (стр. 34–39: 3 разворота, 6 страниц)
+        # Сетка 5: Экспорт страниц «Список обучающихся» (стр. 32–37: 3 разворота, 6 страниц)
         students_export_frame = tk.LabelFrame(
             export_box,
-            text=" Экспорт страниц «Список обучающихся» (стр. 34–39: 3 разворота, 6 страниц) ",
+            text=" Экспорт страниц «Список обучающихся» (стр. 32–37: 3 разворота, 6 страниц) ",
             font=(self.font_sans, 9, "bold"),
             bg=card_bg,
             fg="#1e293b",
@@ -5874,13 +5878,13 @@ class JournalCoverApp(tk.Tk):
 
         self.btn_open_students_spreads = {}
 
-        # 1. Разворот 1 (стр. 34 и 35 журнала, ученики 1-10)
+        # 1. Разворот 1 (стр. 32 и 33 журнала, ученики 1-10)
         btn_col_st_sp1 = tk.Frame(export_students_grid, bg=card_bg)
         btn_col_st_sp1.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 3))
 
         btn_gen_st_sp1 = tk.Button(
             btn_col_st_sp1,
-            text="💾 Разворот 1 (стр. 34-35)",
+            text="💾 Разворот 1 (стр. 32-33)",
             command=lambda: self.on_generate_students_list_spread_click(1),
             font=(self.font_sans, 9, "bold"),
             bg="#0284c7",
@@ -5909,13 +5913,13 @@ class JournalCoverApp(tk.Tk):
         )
         self.btn_open_students_spreads[1].pack(fill=tk.X)
 
-        # 2. Разворот 2 (стр. 36 и 37 журнала, ученики 11-20)
+        # 2. Разворот 2 (стр. 34 и 35 журнала, ученики 11-20)
         btn_col_st_sp2 = tk.Frame(export_students_grid, bg=card_bg)
         btn_col_st_sp2.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(3, 3))
 
         btn_gen_st_sp2 = tk.Button(
             btn_col_st_sp2,
-            text="💾 Разворот 2 (стр. 36-37)",
+            text="💾 Разворот 2 (стр. 34-35)",
             command=lambda: self.on_generate_students_list_spread_click(2),
             font=(self.font_sans, 9, "bold"),
             bg="#0284c7",
@@ -5944,13 +5948,13 @@ class JournalCoverApp(tk.Tk):
         )
         self.btn_open_students_spreads[2].pack(fill=tk.X)
 
-        # 3. Разворот 3 (стр. 38 и 39 журнала, ученики 21-30)
+        # 3. Разворот 3 (стр. 36 и 37 журнала, ученики 21-30)
         btn_col_st_sp3 = tk.Frame(export_students_grid, bg=card_bg)
         btn_col_st_sp3.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(3, 3))
 
         btn_gen_st_sp3 = tk.Button(
             btn_col_st_sp3,
-            text="💾 Разворот 3 (стр. 38-39)",
+            text="💾 Разворот 3 (стр. 36-37)",
             command=lambda: self.on_generate_students_list_spread_click(3),
             font=(self.font_sans, 9, "bold"),
             bg="#0284c7",
@@ -6833,32 +6837,32 @@ class JournalCoverApp(tk.Tk):
 
     def setup_mass_events_tab(self, parent_frame, card_bg, next_tab_idx: int = 17):
         """
-        Настройка вкладки 'Учёт массовых мероприятий' с 2 одинаковыми страницами (стр. 30 и 31 журнала).
+        Настройка вкладки 'Учёт массовых мероприятий' с 2 одинаковыми страницами (стр. 28 и 29 журнала).
         На каждой странице таблица из 5 столбцов и 26 строк.
         """
         self.mass_events_notebook = ttk.Notebook(parent_frame)
         self.mass_events_notebook.pack(fill=tk.BOTH, expand=True)
 
         tab_p1 = tk.Frame(self.mass_events_notebook, bg=card_bg, padx=10, pady=8)
-        self.mass_events_notebook.add(tab_p1, text="Страница 1 (стр. 30)")
+        self.mass_events_notebook.add(tab_p1, text="Страница 1 (стр. 28)")
         self.setup_single_mass_events_page(
             parent_tab=tab_p1,
             card_bg=card_bg,
             page_num=1,
-            journal_page_no=30,
+            journal_page_no=28,
             var_list=self.mass_events_p1_vars,
             widget_list=self.mass_events_p1_widgets,
             next_action=lambda: self.mass_events_notebook.select(1),
-            next_btn_text="К Странице 2 (стр. 31) ➔"
+            next_btn_text="К Странице 2 (стр. 29) ➔"
         )
 
         tab_p2 = tk.Frame(self.mass_events_notebook, bg=card_bg, padx=10, pady=8)
-        self.mass_events_notebook.add(tab_p2, text="Страница 2 (стр. 31)")
+        self.mass_events_notebook.add(tab_p2, text="Страница 2 (стр. 29)")
         self.setup_single_mass_events_page(
             parent_tab=tab_p2,
             card_bg=card_bg,
             page_num=2,
-            journal_page_no=31,
+            journal_page_no=29,
             var_list=self.mass_events_p2_vars,
             widget_list=self.mass_events_p2_widgets,
             next_action=lambda: self.notebook.select(next_tab_idx),
@@ -7230,13 +7234,13 @@ class JournalCoverApp(tk.Tk):
         return "break"
 
     def on_generate_events_p1_click(self):
-        """Формирует и сохраняет отдельный Excel-файл Учёта массовых мероприятий (стр. 30 журнала)."""
+        """Формирует и сохраняет отдельный Excel-файл Учёта массовых мероприятий (стр. 28 журнала)."""
         self.auto_save_mass_events_data()
         st = self.start_year.strip()
         en = self.end_year.strip()
-        default_name = f"Массовые_мероприятия_стр30_{st}-{en}.xlsx"
+        default_name = f"Массовые_мероприятия_стр28_{st}-{en}.xlsx"
         save_path = filedialog.asksaveasfilename(
-            title="Сохранить Учёт массовых мероприятий (стр. 30) в Excel",
+            title="Сохранить Учёт массовых мероприятий (стр. 28) в Excel",
             defaultextension=".xlsx",
             initialfile=default_name,
             filetypes=[("Книга Excel", "*.xlsx"), ("Все файлы", "*.*")]
@@ -7259,26 +7263,26 @@ class JournalCoverApp(tk.Tk):
             if hasattr(self, 'btn_open_events_p1'):
                 self.btn_open_events_p1.config(state=tk.NORMAL)
             self.status_var.set(f"Успешно сохранен: {os.path.basename(save_path)}")
-            messagebox.showinfo("Успешно!", f"Файл 'Учёт массовых мероприятий' (стр. 30) успешно создан:\n{save_path}")
+            messagebox.showinfo("Успешно!", f"Файл 'Учёт массовых мероприятий' (стр. 28) успешно создан:\n{save_path}")
         except Exception as e:
-            self.status_var.set("Ошибка при сохранении мероприятий (стр. 30).")
+            self.status_var.set("Ошибка при сохранении мероприятий (стр. 28).")
             messagebox.showerror("Ошибка", f"Не удалось создать файл Excel:\n{e}")
 
     def on_open_events_p1_file_click(self):
-        """Открывает сгенерированный файл мероприятий (стр. 30)."""
+        """Открывает сгенерированный файл мероприятий (стр. 28)."""
         if not hasattr(self, 'last_saved_events_p1_file') or not self.last_saved_events_p1_file or not os.path.exists(self.last_saved_events_p1_file):
-            messagebox.showwarning("Файл не найден", "Созданный файл мероприятий (стр. 30) не найден на диске.")
+            messagebox.showwarning("Файл не найден", "Созданный файл мероприятий (стр. 28) не найден на диске.")
             return
         self._open_file_system(self.last_saved_events_p1_file)
 
     def on_generate_events_p2_click(self):
-        """Формирует и сохраняет отдельный Excel-файл Учёта массовых мероприятий (стр. 31 журнала)."""
+        """Формирует и сохраняет отдельный Excel-файл Учёта массовых мероприятий (стр. 29 журнала)."""
         self.auto_save_mass_events_data()
         st = self.start_year.strip()
         en = self.end_year.strip()
-        default_name = f"Массовые_мероприятия_стр31_{st}-{en}.xlsx"
+        default_name = f"Массовые_мероприятия_стр29_{st}-{en}.xlsx"
         save_path = filedialog.asksaveasfilename(
-            title="Сохранить Учёт массовых мероприятий (стр. 31) в Excel",
+            title="Сохранить Учёт массовых мероприятий (стр. 29) в Excel",
             defaultextension=".xlsx",
             initialfile=default_name,
             filetypes=[("Книга Excel", "*.xlsx"), ("Все файлы", "*.*")]
@@ -7301,26 +7305,26 @@ class JournalCoverApp(tk.Tk):
             if hasattr(self, 'btn_open_events_p2'):
                 self.btn_open_events_p2.config(state=tk.NORMAL)
             self.status_var.set(f"Успешно сохранен: {os.path.basename(save_path)}")
-            messagebox.showinfo("Успешно!", f"Файл 'Учёт массовых мероприятий' (стр. 31) успешно создан:\n{save_path}")
+            messagebox.showinfo("Успешно!", f"Файл 'Учёт массовых мероприятий' (стр. 29) успешно создан:\n{save_path}")
         except Exception as e:
-            self.status_var.set("Ошибка при сохранении мероприятий (стр. 31).")
+            self.status_var.set("Ошибка при сохранении мероприятий (стр. 29).")
             messagebox.showerror("Ошибка", f"Не удалось создать файл Excel:\n{e}")
 
     def on_open_events_p2_file_click(self):
-        """Открывает сгенерированный файл мероприятий (стр. 31)."""
+        """Открывает сгенерированный файл мероприятий (стр. 29)."""
         if not hasattr(self, 'last_saved_events_p2_file') or not self.last_saved_events_p2_file or not os.path.exists(self.last_saved_events_p2_file):
-            messagebox.showwarning("Файл не найден", "Созданный файл мероприятий (стр. 31) не найден на диске.")
+            messagebox.showwarning("Файл не найден", "Созданный файл мероприятий (стр. 29) не найден на диске.")
             return
         self._open_file_system(self.last_saved_events_p2_file)
 
     def on_generate_events_spread_click(self):
-        """Формирует и сохраняет разворот Учёта массовых мероприятий (стр. 30 и 31 журнала) в один файл."""
+        """Формирует и сохраняет разворот Учёта массовых мероприятий (стр. 28 и 29 журнала) в один файл."""
         self.auto_save_mass_events_data()
         st = self.start_year.strip()
         en = self.end_year.strip()
-        default_name = f"Массовые_мероприятия_Разворот_стр30-31_{st}-{en}.xlsx"
+        default_name = f"Массовые_мероприятия_Разворот_стр28-29_{st}-{en}.xlsx"
         save_path = filedialog.asksaveasfilename(
-            title="Сохранить Разворот мероприятий (стр. 30 и 31) в Excel",
+            title="Сохранить Разворот мероприятий (стр. 28 и 29) в Excel",
             defaultextension=".xlsx",
             initialfile=default_name,
             filetypes=[("Книга Excel", "*.xlsx"), ("Все файлы", "*.*")]
@@ -7353,7 +7357,7 @@ class JournalCoverApp(tk.Tk):
             if hasattr(self, 'btn_open_events_spread'):
                 self.btn_open_events_spread.config(state=tk.NORMAL)
             self.status_var.set(f"Успешно сохранен разворот мероприятий: {os.path.basename(save_path)}")
-            messagebox.showinfo("Успешно!", f"Разворот мероприятий (стр. 30 и 31) успешно сохранен:\n{save_path}")
+            messagebox.showinfo("Успешно!", f"Разворот мероприятий (стр. 28 и 29) успешно сохранен:\n{save_path}")
         except Exception as e:
             self.status_var.set("Ошибка при сохранении разворота мероприятий.")
             messagebox.showerror("Ошибка", f"Не удалось создать файл Excel:\n{e}")
@@ -7366,30 +7370,30 @@ class JournalCoverApp(tk.Tk):
         self._open_file_system(self.last_saved_events_spread_file)
 
     def setup_creative_achievements_tab(self, parent_tab, card_bg, next_tab_idx: int = 18):
-        """Настройка вкладки 'Творческие достижения' с двумя вложенными страницами (стр. 32 и стр. 33)."""
+        """Настройка вкладки 'Творческие достижения' с двумя вложенными страницами (стр. 30 и стр. 31)."""
         self.creative_achievements_notebook = ttk.Notebook(parent_tab)
         self.creative_achievements_notebook.pack(fill=tk.BOTH, expand=True)
 
         tab_p1 = tk.Frame(self.creative_achievements_notebook, bg=card_bg, padx=10, pady=8)
-        self.creative_achievements_notebook.add(tab_p1, text="Страница 1 (стр. 32)")
+        self.creative_achievements_notebook.add(tab_p1, text="Страница 1 (стр. 30)")
         self.setup_single_creative_page(
             parent_tab=tab_p1,
             card_bg=card_bg,
             page_num=1,
-            journal_page_no=32,
+            journal_page_no=30,
             var_list=self.creative_achievements_p1_vars,
             widget_list=self.creative_achievements_p1_widgets,
             next_action=lambda: self.creative_achievements_notebook.select(1),
-            next_btn_text="К Странице 2 (стр. 33) ➔"
+            next_btn_text="К Странице 2 (стр. 31) ➔"
         )
 
         tab_p2 = tk.Frame(self.creative_achievements_notebook, bg=card_bg, padx=10, pady=8)
-        self.creative_achievements_notebook.add(tab_p2, text="Страница 2 (стр. 33)")
+        self.creative_achievements_notebook.add(tab_p2, text="Страница 2 (стр. 31)")
         self.setup_single_creative_page(
             parent_tab=tab_p2,
             card_bg=card_bg,
             page_num=2,
-            journal_page_no=33,
+            journal_page_no=31,
             var_list=self.creative_achievements_p2_vars,
             widget_list=self.creative_achievements_p2_widgets,
             next_action=lambda: self.notebook.select(next_tab_idx),
@@ -7755,18 +7759,18 @@ class JournalCoverApp(tk.Tk):
             count += 1
 
         self.auto_save_creative_achievements_data()
-        pg_str = f"стр. {31 + page_num}"
+        pg_str = f"стр. {29 + page_num}"
         self.status_var.set(f"Вставлено {count} записей достижений ({pg_str}, начиная со строки {start_idx + 1}).")
         return "break"
 
     def on_generate_creative_p1_click(self):
-        """Формирует и сохраняет отдельный Excel-файл Творческих достижений (стр. 32 журнала)."""
+        """Формирует и сохраняет отдельный Excel-файл Творческих достижений (стр. 30 журнала)."""
         self.auto_save_creative_achievements_data()
         st = self.start_year.strip()
         en = self.end_year.strip()
-        default_name = f"Творческие_достижения_стр32_{st}-{en}.xlsx"
+        default_name = f"Творческие_достижения_стр30_{st}-{en}.xlsx"
         save_path = filedialog.asksaveasfilename(
-            title="Сохранить Творческие достижения (стр. 32) в Excel",
+            title="Сохранить Творческие достижения (стр. 30) в Excel",
             defaultextension=".xlsx",
             initialfile=default_name,
             filetypes=[("Книга Excel", "*.xlsx"), ("Все файлы", "*.*")]
@@ -7786,26 +7790,26 @@ class JournalCoverApp(tk.Tk):
             if hasattr(self, 'btn_open_creative_p1'):
                 self.btn_open_creative_p1.config(state=tk.NORMAL)
             self.status_var.set(f"Успешно сохранен: {os.path.basename(save_path)}")
-            messagebox.showinfo("Успешно!", f"Файл 'Творческие достижения' (стр. 32) успешно создан:\n{save_path}")
+            messagebox.showinfo("Успешно!", f"Файл 'Творческие достижения' (стр. 30) успешно создан:\n{save_path}")
         except Exception as e:
-            self.status_var.set("Ошибка при сохранении достижений (стр. 32).")
+            self.status_var.set("Ошибка при сохранении достижений (стр. 30).")
             messagebox.showerror("Ошибка", f"Не удалось создать файл Excel:\n{e}")
 
     def on_open_creative_p1_file_click(self):
-        """Открывает сгенерированный файл достижений (стр. 32)."""
+        """Открывает сгенерированный файл достижений (стр. 30)."""
         if not hasattr(self, 'last_saved_creative_p1_file') or not self.last_saved_creative_p1_file or not os.path.exists(self.last_saved_creative_p1_file):
-            messagebox.showwarning("Файл не найден", "Созданный файл достижений (стр. 32) не найден на диске.")
+            messagebox.showwarning("Файл не найден", "Созданный файл достижений (стр. 30) не найден на диске.")
             return
         self._open_file_system(self.last_saved_creative_p1_file)
 
     def on_generate_creative_p2_click(self):
-        """Формирует и сохраняет отдельный Excel-файл Творческих достижений (стр. 33 журнала)."""
+        """Формирует и сохраняет отдельный Excel-файл Творческих достижений (стр. 31 журнала)."""
         self.auto_save_creative_achievements_data()
         st = self.start_year.strip()
         en = self.end_year.strip()
-        default_name = f"Творческие_достижения_стр33_{st}-{en}.xlsx"
+        default_name = f"Творческие_достижения_стр31_{st}-{en}.xlsx"
         save_path = filedialog.asksaveasfilename(
-            title="Сохранить Творческие достижения (стр. 33) в Excel",
+            title="Сохранить Творческие достижения (стр. 31) в Excel",
             defaultextension=".xlsx",
             initialfile=default_name,
             filetypes=[("Книга Excel", "*.xlsx"), ("Все файлы", "*.*")]
@@ -7825,26 +7829,26 @@ class JournalCoverApp(tk.Tk):
             if hasattr(self, 'btn_open_creative_p2'):
                 self.btn_open_creative_p2.config(state=tk.NORMAL)
             self.status_var.set(f"Успешно сохранен: {os.path.basename(save_path)}")
-            messagebox.showinfo("Успешно!", f"Файл 'Творческие достижения' (стр. 33) успешно создан:\n{save_path}")
+            messagebox.showinfo("Успешно!", f"Файл 'Творческие достижения' (стр. 31) успешно создан:\n{save_path}")
         except Exception as e:
-            self.status_var.set("Ошибка при сохранении достижений (стр. 33).")
+            self.status_var.set("Ошибка при сохранении достижений (стр. 31).")
             messagebox.showerror("Ошибка", f"Не удалось создать файл Excel:\n{e}")
 
     def on_open_creative_p2_file_click(self):
-        """Открывает сгенерированный файл достижений (стр. 33)."""
+        """Открывает сгенерированный файл достижений (стр. 31)."""
         if not hasattr(self, 'last_saved_creative_p2_file') or not self.last_saved_creative_p2_file or not os.path.exists(self.last_saved_creative_p2_file):
-            messagebox.showwarning("Файл не найден", "Созданный файл достижений (стр. 33) не найден на диске.")
+            messagebox.showwarning("Файл не найден", "Созданный файл достижений (стр. 31) не найден на диске.")
             return
         self._open_file_system(self.last_saved_creative_p2_file)
 
     def on_generate_creative_spread_click(self):
-        """Формирует и сохраняет разворот Творческих достижений (стр. 32 и 33 журнала) в один файл."""
+        """Формирует и сохраняет разворот Творческих достижений (стр. 30 и 31 журнала) в один файл."""
         self.auto_save_creative_achievements_data()
         st = self.start_year.strip()
         en = self.end_year.strip()
-        default_name = f"Творческие_достижения_Разворот_стр32-33_{st}-{en}.xlsx"
+        default_name = f"Творческие_достижения_Разворот_стр30-31_{st}-{en}.xlsx"
         save_path = filedialog.asksaveasfilename(
-            title="Сохранить Разворот творческих достижений (стр. 32 и 33) в Excel",
+            title="Сохранить Разворот творческих достижений (стр. 30 и 31) в Excel",
             defaultextension=".xlsx",
             initialfile=default_name,
             filetypes=[("Книга Excel", "*.xlsx"), ("Все файлы", "*.*")]
@@ -7871,7 +7875,7 @@ class JournalCoverApp(tk.Tk):
             if hasattr(self, 'btn_open_creative_spread'):
                 self.btn_open_creative_spread.config(state=tk.NORMAL)
             self.status_var.set(f"Успешно сохранен разворот достижений: {os.path.basename(save_path)}")
-            messagebox.showinfo("Успешно!", f"Разворот творческих достижений (стр. 32 и 33) успешно сохранен:\n{save_path}")
+            messagebox.showinfo("Успешно!", f"Разворот творческих достижений (стр. 30 и 31) успешно сохранен:\n{save_path}")
         except Exception as e:
             self.status_var.set("Ошибка при сохранении разворота достижений.")
             messagebox.showerror("Ошибка", f"Не удалось создать файл Excel:\n{e}")
@@ -7884,17 +7888,17 @@ class JournalCoverApp(tk.Tk):
         self._open_file_system(self.last_saved_creative_spread_file)
 
     def setup_students_list_tab(self, parent_tab, card_bg, next_tab_idx: int = 19):
-        """Создает вкладку 'Список обучающихся' из 6 страниц (3 разворота, стр. 34-39 журнала)."""
+        """Создает вкладку 'Список обучающихся' из 6 страниц (3 разворота, стр. 32-37 журнала)."""
         self.students_list_notebook = ttk.Notebook(parent_tab)
         self.students_list_notebook.pack(fill=tk.BOTH, expand=True)
 
         pages_info = [
-            (1, 34, 1, "Стр. 1 (стр. 34: Уч. 1–10)"),
-            (2, 35, 1, "Стр. 2 (стр. 35: Родители 1–10)"),
-            (3, 36, 11, "Стр. 3 (стр. 36: Уч. 11–20)"),
-            (4, 37, 11, "Стр. 4 (стр. 37: Родители 11–20)"),
-            (5, 38, 21, "Стр. 5 (стр. 38: Уч. 21–30)"),
-            (6, 39, 21, "Стр. 6 (стр. 39: Родители 21–30)"),
+            (1, 32, 1, "Стр. 1 (стр. 32: Уч. 1–10)"),
+            (2, 33, 1, "Стр. 2 (стр. 33: Родители 1–10)"),
+            (3, 34, 11, "Стр. 3 (стр. 34: Уч. 11–20)"),
+            (4, 35, 11, "Стр. 4 (стр. 35: Родители 11–20)"),
+            (5, 36, 21, "Стр. 5 (стр. 36: Уч. 21–30)"),
+            (6, 37, 21, "Стр. 6 (стр. 37: Родители 21–30)"),
         ]
 
         for p_idx, j_no, start_no, tab_title in pages_info:
@@ -8461,7 +8465,7 @@ class JournalCoverApp(tk.Tk):
         self.auto_save_students_list_data()
         st = self.start_year.strip()
         en = self.end_year.strip()
-        journal_p = 33 + page_num
+        journal_p = 31 + page_num
         default_name = f"Список_обучающихся_стр{journal_p}_{st}-{en}.xlsx"
         save_path = filedialog.asksaveasfilename(
             title=f"Сохранить Страницу {page_num} (стр. {journal_p} журнала) в Excel",
@@ -8514,18 +8518,18 @@ class JournalCoverApp(tk.Tk):
         self._open_file_system(file_path)
 
     def on_generate_students_list_spread_click(self, spread_idx: int):
-        """Формирует и сохраняет разворот списка обучающихся (разворот 1: стр. 34-35, 2: 36-37, 3: 38-39)."""
+        """Формирует и сохраняет разворот списка обучающихся (разворот 1: стр. 32-33, 2: 34-35, 3: 36-37)."""
         self.auto_save_students_list_data()
         st = self.start_year.strip()
         en = self.end_year.strip()
         if spread_idx == 1:
-            p_odd, p_even = 34, 35
+            p_odd, p_even = 32, 33
             odd_key, even_key = 1, 2
         elif spread_idx == 2:
-            p_odd, p_even = 36, 37
+            p_odd, p_even = 34, 35
             odd_key, even_key = 3, 4
         else:
-            p_odd, p_even = 38, 39
+            p_odd, p_even = 36, 37
             odd_key, even_key = 5, 6
 
         default_name = f"Список_обучающихся_Разворот{spread_idx}_стр{p_odd}-{p_even}_{st}-{en}.xlsx"
@@ -8577,13 +8581,13 @@ class JournalCoverApp(tk.Tk):
         self._open_file_system(file_path)
 
     def on_generate_students_list_all_click(self):
-        """Формирует и сохраняет все 6 страниц списка обучающихся (стр. 34-39 журнала) в один файл Excel."""
+        """Формирует и сохраняет все 6 страниц списка обучающихся (стр. 32-37 журнала) в один файл Excel."""
         self.auto_save_students_list_data()
         st = self.start_year.strip()
         en = self.end_year.strip()
-        default_name = f"Список_обучающихся_Все_6_страниц_стр34-39_{st}-{en}.xlsx"
+        default_name = f"Список_обучающихся_Все_6_страниц_стр32-37_{st}-{en}.xlsx"
         save_path = filedialog.asksaveasfilename(
-            title="Сохранить Все 6 страниц 'Список обучающихся' (стр. 34-39) в Excel",
+            title="Сохранить Все 6 страниц 'Список обучающихся' (стр. 32-37) в Excel",
             defaultextension=".xlsx",
             initialfile=default_name,
             filetypes=[("Книга Excel", "*.xlsx"), ("Все файлы", "*.*")]
@@ -8620,7 +8624,7 @@ class JournalCoverApp(tk.Tk):
             if hasattr(self, 'btn_open_students_all'):
                 self.btn_open_students_all.config(state=tk.NORMAL)
             self.status_var.set(f"Успешно сохранен полный список обучающихся: {os.path.basename(save_path)}")
-            messagebox.showinfo("Успешно!", f"Все 6 страниц 'Список обучающихся' (стр. 34-39) успешно сохранены:\n{save_path}")
+            messagebox.showinfo("Успешно!", f"Все 6 страниц 'Список обучающихся' (стр. 32-37) успешно сохранены:\n{save_path}")
         except Exception as e:
             self.status_var.set("Ошибка при сохранении полного списка обучающихся.")
             messagebox.showerror("Ошибка", f"Не удалось создать файл Excel:\n{e}")
@@ -11923,7 +11927,7 @@ class JournalCoverApp(tk.Tk):
                 for r in m_data["topic_row_vars"]
             ]
 
-        # Учёт массовых мероприятий (стр. 30 и 31)
+        # Учёт массовых мероприятий (стр. 28 и 29)
         self.auto_save_mass_events_data()
         ev_p1 = [
             {
@@ -11946,7 +11950,7 @@ class JournalCoverApp(tk.Tk):
             for r in self.mass_events_p2_vars
         ]
 
-        # Творческие достижения (стр. 32 и 33)
+        # Творческие достижения (стр. 30 и 31)
         self.auto_save_creative_achievements_data()
         cr_p1 = [
             {
@@ -11963,7 +11967,7 @@ class JournalCoverApp(tk.Tk):
             for r in self.creative_achievements_p2_vars
         ]
 
-        # Список обучающихся (стр. 34-39 журнала, 6 страниц / 3 разворота)
+        # Список обучающихся (стр. 32-37 журнала, 6 страниц / 3 разворота)
         self.auto_save_students_list_data()
         st_p1 = [
             {
@@ -12127,9 +12131,9 @@ class JournalCoverApp(tk.Tk):
                 f"4. Оборот титульного (стр. 2, чётная сторона, переплет справа)\n"
                 f"5. Основные данные (стр. 3, нечётная сторона, переплет слева)\n"
                 f"6–29. Учебные месяцы: Сентябрь — Август (стр. 4–27 с чередованием полей под переплет)\n"
-                f"30–31. Учёт массовых мероприятий с обучающимися (стр. 30–31)\n"
-                f"32–33. Творческие достижения обучающихся (стр. 32–33)\n"
-                f"34–39. Список обучающихся: 3 разворота по 10 чел. (стр. 34–39)\n"
+                f"30–31. Учёт массовых мероприятий с обучающимися (стр. 28–29)\n"
+                f"32–33. Творческие достижения обучающихся (стр. 30–31)\n"
+                f"34–39. Список обучающихся: 3 разворота по 10 чел. (стр. 32–37)\n"
                 f"40–41. Список обучающихся, прошедших инструктаж по ТБ (стр. 38–39)\n"
                 f"42. Годовой цифровой отчёт (стр. 40, чётная сторона, переплет справа)\n\n"
                 f"Все данные и история сохранены в config.json"
