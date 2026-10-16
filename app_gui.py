@@ -2454,12 +2454,12 @@ def populate_annual_report_sheet(
             c.alignment = center_align
             c.border = thin_border
 
-    # Строки данных (строки 5, 6, 7, 8) - всего 4 строки
-    default_periods = ["I полугодие", "II полугодие", "За год", ""]
+    # Строки данных (строки 5, 6, 7) - всего 3 строки (I полугодие, II полугодие, За год)
+    default_periods = ["I полугодие", "II полугодие", "За год"]
 
     data_rows = data or []
 
-    for row_idx in range(4):
+    for row_idx in range(3):
         sheet_row = 5 + row_idx
         ws.row_dimensions[sheet_row].height = 24
 
@@ -2503,29 +2503,29 @@ def populate_annual_report_sheet(
             c.alignment = center_align
             c.border = thin_border
 
-    # Отступ после таблицы
-    ws.row_dimensions[9].height = 10
+    # Отступ после таблицы (строка 8)
+    ws.row_dimensions[8].height = 10
 
     # Блок текста: ТРЕБОВАНИЯ
-    ws.row_dimensions[10].height = 16
+    ws.row_dimensions[9].height = 16
+    ws.merge_cells("A9:R9")
+    ws['A9'] = "ТРЕБОВАНИЯ"
+    ws['A9'].font = font_req_h1
+    ws['A9'].alignment = center_align
+
+    ws.row_dimensions[10].height = 24
     ws.merge_cells("A10:R10")
-    ws['A10'] = "ТРЕБОВАНИЯ"
-    ws['A10'].font = font_req_h1
+    ws['A10'] = "К РУКОВОДИТЕЛЯМ ОБЪЕДИНЕНИЙ И ПОДРАЗДЕЛЕНИЙ ОРГАНИЗАЦИЙ ДОПОЛНИТЕЛЬНОГО ОБРАЗОВАНИЯ ДЕТЕЙ ПО ОХРАНЕ ТРУДА, ТЕХНИКЕ БЕЗОПАСНОСТИ И ПРОИЗВОДСТВЕННОЙ САНИТАРИИ"
+    ws['A10'].font = font_req_h2
     ws['A10'].alignment = center_align
 
-    ws.row_dimensions[11].height = 24
-    ws.merge_cells("A11:R11")
-    ws['A11'] = "К РУКОВОДИТЕЛЯМ ОБЪЕДИНЕНИЙ И ПОДРАЗДЕЛЕНИЙ ОРГАНИЗАЦИЙ ДОПОЛНИТЕЛЬНОГО ОБРАЗОВАНИЯ ДЕТЕЙ ПО ОХРАНЕ ТРУДА, ТЕХНИКЕ БЕЗОПАСНОСТИ И ПРОИЗВОДСТВЕННОЙ САНИТАРИИ"
-    ws['A11'].font = font_req_h2
-    ws['A11'].alignment = center_align
+    ws.row_dimensions[11].height = 4
 
-    ws.row_dimensions[12].height = 4
-
-    ws.row_dimensions[13].height = 16
-    ws.merge_cells("A13:R13")
-    ws['A13'] = "РУКОВОДИТЕЛЬ ОБЪЕДИНЕНИЯ при непосредственном участии и помощи заведующего лабораторией, кабинетом, мастерской:"
-    ws['A13'].font = font_req_lead
-    ws['A13'].alignment = left_align
+    ws.row_dimensions[12].height = 16
+    ws.merge_cells("A12:R12")
+    ws['A12'] = "РУКОВОДИТЕЛЬ ОБЪЕДИНЕНИЯ при непосредственном участии и помощи заведующего лабораторией, кабинетом, мастерской:"
+    ws['A12'].font = font_req_lead
+    ws['A12'].alignment = left_align
 
     requirements_text = [
         ("1. Принимает необходимые меры для создания здоровых и безопасных условий проведения занятий.", 14),
@@ -2541,18 +2541,18 @@ def populate_annual_report_sheet(
     ]
 
     for req_idx, (req_text, req_height) in enumerate(requirements_text):
-        cur_row = 14 + req_idx
+        cur_row = 13 + req_idx
         ws.row_dimensions[cur_row].height = req_height
         ws.merge_cells(f"A{cur_row}:R{cur_row}")
         ws[f"A{cur_row}"] = req_text
         ws[f"A{cur_row}"].font = font_req_body
         ws[f"A{cur_row}"].alignment = left_align
 
-    # Выходные данные внизу листа (строка 25)
-    ws.row_dimensions[24].height = 8
-    ws.row_dimensions[25].height = 14
-    ws.merge_cells("A25:R25")
-    ws['A25'] = "Журнал учёта работы педагога дополнительного образования в объединении (секции, клубе, кружке). Формат 60×84/8. 40 с."
+    # Выходные данные внизу листа (строка 24)
+    ws.row_dimensions[23].height = 8
+    ws.row_dimensions[24].height = 14
+    ws.merge_cells("A24:R24")
+    ws['A24'] = "Журнал учёта работы педагога дополнительного образования в объединении (секции, клубе, кружке). Формат 60×84/8. 40 с."
     ws['A25'].font = font_footer
     ws['A25'].alignment = center_align
 
@@ -3329,16 +3329,20 @@ class JournalCoverApp(tk.Tk):
         self.safety_briefing_p1_widgets = []
         self.safety_briefing_p2_widgets = []
         self.safety_briefing_notebook = None
+        self.safety_p1_content_widget = None
+        self.safety_p1_sig_widget = None
+        self.safety_p2_content_widget = None
+        self.safety_p2_sig_widget = None
         self.last_saved_safety_p1_file = None
         self.last_saved_safety_p2_file = None
         self.last_saved_safety_spread_file = None
 
-        # Состояние вкладки 'Годовой цифровой отчёт' (стр. 40 журнала, 4 строки)
+        # Состояние вкладки 'Годовой цифровой отчёт' (стр. 40 журнала, 3 строки: I полугодие, II полугодие, За год)
         # 18 колонок: period, total, boys, girls, classes (11), years_in_org (3)
         self.annual_report_vars = []
         saved_ar = self.config_data.get("annual_report", [])
-        default_ar_periods = ["I полугодие", "II полугодие", "За год", ""]
-        for r_idx in range(4):
+        default_ar_periods = ["I полугодие", "II полугодие", "За год"]
+        for r_idx in range(3):
             item = saved_ar[r_idx] if r_idx < len(saved_ar) and isinstance(saved_ar[r_idx], dict) else {}
             def_p = default_ar_periods[r_idx]
             v_per = tk.StringVar(value=item.get("period", def_p))
@@ -8899,23 +8903,109 @@ class JournalCoverApp(tk.Tk):
             )
             lbl_num.grid(row=r_idx + 1, column=0, sticky="nsew", padx=1, pady=1)
 
-            # 4 поля ввода:
-            col_widths = [28, 14, 36, 20]
-            for c_offset in range(4):
-                var = var_list[r_idx][c_offset]
-                e = ttk.Entry(grid_frame, textvariable=var, font=(self.font_sans, 9), width=col_widths[c_offset])
-                e.grid(row=r_idx + 1, column=c_offset + 1, sticky="nsew", padx=1, pady=1)
+            # Столбец 1: Фамилия, имя обучающегося
+            e_student = ttk.Entry(grid_frame, textvariable=var_list[r_idx][0], font=(self.font_sans, 9), width=28)
+            e_student.grid(row=r_idx + 1, column=1, sticky="nsew", padx=1, pady=1)
+            self.attach_context_menu(e_student)
+            e_student.bind("<KeyPress>", self.handle_entry_shortcuts, add="+")
+            e_student.bind("<Control-v>", lambda ev, r=r_idx: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=0, event=ev))
+            e_student.bind("<Control-V>", lambda ev, r=r_idx: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=0, event=ev))
+            row_widgets.append(e_student)
 
-                self.attach_context_menu(e)
-                e.bind("<KeyPress>", self.handle_entry_shortcuts, add="+")
-                e.bind("<Control-v>", lambda ev, r=r_idx, c=c_offset: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=c, event=ev))
-                e.bind("<Control-V>", lambda ev, r=r_idx, c=c_offset: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=c, event=ev))
-
-                row_widgets.append(e)
+            # Столбец 2: Дата проведения инструктажа
+            e_date = ttk.Entry(grid_frame, textvariable=var_list[r_idx][1], font=(self.font_sans, 9), width=16, justify="center")
+            e_date.grid(row=r_idx + 1, column=2, sticky="nsew", padx=1, pady=1)
+            self.attach_context_menu(e_date)
+            e_date.bind("<KeyPress>", self.handle_entry_shortcuts, add="+")
+            e_date.bind("<Control-v>", lambda ev, r=r_idx: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=1, event=ev))
+            e_date.bind("<Control-V>", lambda ev, r=r_idx: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=1, event=ev))
+            row_widgets.append(e_date)
 
             widget_list.append(row_widgets)
 
-        # Навигация Tab/Shift+Tab и стрелки вверх/вниз
+        # -------------------------------------------------------------
+        # Столбец 3: Единая большая ячейка 'Краткое содержание инструктажа' (объединена на 28 строк)
+        # -------------------------------------------------------------
+        content_text = tk.Text(
+            grid_frame,
+            font=(self.font_sans, 9),
+            width=36,
+            wrap=tk.WORD,
+            bg="#ffffff",
+            fg="#0f172a",
+            relief=tk.SOLID,
+            bd=1,
+            padx=8,
+            pady=8
+        )
+        content_text.grid(row=1, column=3, rowspan=28, sticky="nsew", padx=1, pady=1)
+        self.attach_context_menu(content_text)
+
+        # -------------------------------------------------------------
+        # Столбец 4: Единая большая ячейка 'Подпись проводившего инструктаж (разборчиво)' (объединена на 28 строк)
+        # -------------------------------------------------------------
+        sig_text = tk.Text(
+            grid_frame,
+            font=(self.font_sans, 9),
+            width=22,
+            wrap=tk.WORD,
+            bg="#ffffff",
+            fg="#0f172a",
+            relief=tk.SOLID,
+            bd=1,
+            padx=8,
+            pady=8
+        )
+        sig_text.tag_configure("center", justify="center")
+        sig_text.grid(row=1, column=4, rowspan=28, sticky="nsew", padx=1, pady=1)
+        self.attach_context_menu(sig_text)
+
+        if page_num == 1:
+            self.safety_p1_content_widget = content_text
+            self.safety_p1_sig_widget = sig_text
+        else:
+            self.safety_p2_content_widget = content_text
+            self.safety_p2_sig_widget = sig_text
+
+        # Первичное заполнение из var_list
+        init_cnt = ""
+        init_sig = ""
+        for r in var_list:
+            if not init_cnt and r[2].get().strip():
+                init_cnt = r[2].get().strip()
+            if not init_sig and r[3].get().strip():
+                init_sig = r[3].get().strip()
+
+        if init_cnt:
+            content_text.insert("1.0", init_cnt)
+        if init_sig:
+            sig_text.insert("1.0", init_sig)
+            sig_text.tag_add("center", "1.0", "end")
+
+        # Синхронизация при ручном вводе/редактировании в большой ячейке
+        def _on_content_change(event=None):
+            val = content_text.get("1.0", "end-1c").strip()
+            for r in var_list:
+                r[2].set(val)
+            self.schedule_auto_save_safety_briefing()
+
+        def _on_sig_change(event=None):
+            val = sig_text.get("1.0", "end-1c").strip()
+            sig_text.tag_add("center", "1.0", "end")
+            for r in var_list:
+                r[3].set(val)
+            self.schedule_auto_save_safety_briefing()
+
+        content_text.bind("<KeyRelease>", _on_content_change)
+        content_text.bind("<FocusOut>", _on_content_change)
+        sig_text.bind("<KeyRelease>", _on_sig_change)
+        sig_text.bind("<FocusOut>", _on_sig_change)
+
+        # Tab переходы
+        content_text.bind("<Tab>", lambda e: (sig_text.focus_set(), "break")[1])
+        sig_text.bind("<Shift-Tab>", lambda e: (content_text.focus_set(), "break")[1])
+
+        # Навигация со стрелками вверх/вниз для списка обучающихся и дат
         for r_idx, row in enumerate(widget_list):
             for c_offset, w in enumerate(row):
                 if r_idx < 27:
@@ -8966,17 +9056,54 @@ class JournalCoverApp(tk.Tk):
         messagebox.showinfo("Успешно", f"Вставлено {count} обучающихся на страницу {page_num}.")
 
     def fill_safety_date_for_all(self, page_num: int):
-        """Проставляет дату инструктажа во все строки страницы."""
+        """Проставляет дату инструктажа во все строки страницы, автоопределяя первое число из Сентября."""
         import tkinter.simpledialog as sd
         def_date = ""
-        if hasattr(self, 'months_data') and "september" in self.months_data:
-            d_vars = self.months_data["september"]["date_vars"]
-            if d_vars and d_vars[0].get().strip():
-                def_date = d_vars[0].get().strip()
-        if not def_date:
-            def_date = "02.09.2024"
 
-        ans = sd.askstring("Дата инструктажа", f"Введите дату проведения инструктажа для страницы {page_num}:", initialvalue=def_date, parent=self)
+        # 1. Ищем самое первое число (дату), введённое на странице Сентябрь
+        if hasattr(self, 'months_data') and "september" in self.months_data:
+            # Сначала проверяем даты занятий на Странице 1 Сентября
+            d_vars = self.months_data["september"].get("date_vars", [])
+            for dv in d_vars:
+                val = dv.get().strip()
+                if val:
+                    def_date = val
+                    break
+
+            # Если на Странице 1 пусто, проверяем даты занятий в темах на Странице 2 Сентября
+            if not def_date:
+                t_vars = self.months_data["september"].get("topic_row_vars", [])
+                for tv in t_vars:
+                    val = tv[0].get().strip()
+                    if val:
+                        def_date = val
+                        break
+
+        # Если введено только число дня (например, "1" или "01") либо "ДД.ММ", преобразуем в полный формат ДД.ММ.ГГ
+        if def_date:
+            yr = ""
+            if hasattr(self, 'start_year_var') and self.start_year_var.get().strip():
+                yr = self.start_year_var.get().strip()
+            elif hasattr(self, 'year_var') and self.year_var.get().strip():
+                m_yr = re.search(r'\b(20\d{2})\b', self.year_var.get())
+                if m_yr:
+                    yr = m_yr.group(1)
+            yr_short = yr[-2:] if len(yr) >= 2 else "26"
+
+            if def_date.isdigit():
+                day_num = int(def_date)
+                if 1 <= day_num <= 31:
+                    def_date = f"{day_num:02d}.09.{yr_short}"
+            elif re.match(r'^\d{1,2}\.\d{1,2}$', def_date):
+                parts = def_date.split('.')
+                def_date = f"{int(parts[0]):02d}.{int(parts[1]):02d}.{yr_short}"
+
+        ans = sd.askstring(
+            "Дата инструктажа",
+            f"Введите дату проведения инструктажа для страницы {page_num}:",
+            initialvalue=def_date,
+            parent=self
+        )
         if ans is None:
             return
         ans = ans.strip()
@@ -8999,7 +9126,7 @@ class JournalCoverApp(tk.Tk):
         self.status_var.set(f"Дата '{ans}' проставлена в {count} строк на странице {page_num}.")
 
     def fill_safety_content_for_all(self, page_num: int):
-        """Проставляет краткое содержание инструктажа во все строки страницы."""
+        """Проставляет краткое содержание инструктажа во все строки страницы и в объединённую ячейку."""
         import tkinter.simpledialog as sd
         def_theme = "Вводный инструктаж по ТБ и правилам поведения"
         ans = sd.askstring("Тема инструктажа", f"Введите краткое содержание инструктажа для страницы {page_num}:", initialvalue=def_theme, parent=self)
@@ -9010,22 +9137,19 @@ class JournalCoverApp(tk.Tk):
             return
 
         var_list = self.safety_briefing_p1_vars if page_num == 1 else self.safety_briefing_p2_vars
-        count = 0
         for r in var_list:
-            if r[0].get().strip():
-                r[2].set(ans)
-                count += 1
+            r[2].set(ans)
 
-        if count == 0:
-            for r in var_list:
-                r[2].set(ans)
-            count = 28
+        w_cnt = self.safety_p1_content_widget if page_num == 1 else self.safety_p2_content_widget
+        if w_cnt and w_cnt.winfo_exists():
+            w_cnt.delete("1.0", tk.END)
+            w_cnt.insert("1.0", ans)
 
         self.schedule_auto_save_safety_briefing()
-        self.status_var.set(f"Содержание инструктажа проставлено в {count} строк на странице {page_num}.")
+        self.status_var.set(f"Содержание инструктажа обновлено на странице {page_num}.")
 
     def fill_safety_signature_for_all(self, page_num: int):
-        """Проставляет подпись (ФИО педагога) во все строки страницы."""
+        """Проставляет подпись (ФИО педагога) во все строки страницы и в объединённую ячейку."""
         teacher = ""
         if hasattr(self, 'teacher_var') and self.teacher_var.get().strip():
             teacher = self.teacher_var.get().strip()
@@ -9040,28 +9164,35 @@ class JournalCoverApp(tk.Tk):
             teacher = teacher.strip()
 
         var_list = self.safety_briefing_p1_vars if page_num == 1 else self.safety_briefing_p2_vars
-        count = 0
         for r in var_list:
-            if r[0].get().strip():
-                r[3].set(teacher)
-                count += 1
+            r[3].set(teacher)
 
-        if count == 0:
-            for r in var_list:
-                r[3].set(teacher)
-            count = 28
+        w_sig = self.safety_p1_sig_widget if page_num == 1 else self.safety_p2_sig_widget
+        if w_sig and w_sig.winfo_exists():
+            w_sig.delete("1.0", tk.END)
+            w_sig.insert("1.0", teacher)
+            w_sig.tag_add("center", "1.0", "end")
 
         self.schedule_auto_save_safety_briefing()
-        self.status_var.set(f"Подпись педагога '{teacher}' проставлена в {count} строк на странице {page_num}.")
+        self.status_var.set(f"Подпись педагога '{teacher}' проставлена на странице {page_num}.")
 
     def clear_safety_briefing_page(self, page_num: int):
         """Очищает страницу инструктажа по технике безопасности после подтверждения."""
-        if not messagebox.askyesno("Очистить страницу", f"Вы уверены, что хотите полностью очистить все 28 строк на странице {page_num}?"):
+        if not messagebox.askyesno("Очистить страницу", f"Вы уверены, что хотите полностью очистить все данные на странице {page_num}?"):
             return
         var_list = self.safety_briefing_p1_vars if page_num == 1 else self.safety_briefing_p2_vars
         for r in var_list:
             for v in r:
                 v.set("")
+
+        w_cnt = self.safety_p1_content_widget if page_num == 1 else self.safety_p2_content_widget
+        if w_cnt and w_cnt.winfo_exists():
+            w_cnt.delete("1.0", tk.END)
+
+        w_sig = self.safety_p1_sig_widget if page_num == 1 else self.safety_p2_sig_widget
+        if w_sig and w_sig.winfo_exists():
+            w_sig.delete("1.0", tk.END)
+
         self.auto_save_safety_briefing_data()
         self.status_var.set(f"Страница {page_num} инструктажа по ТБ очищена.")
 
@@ -9105,6 +9236,23 @@ class JournalCoverApp(tk.Tk):
                 elif col_idx < num_cols:
                     var_list[idx][col_idx].set(line)
 
+        # Синхронизируем объединённые ячейки содержания и подписи, если они присутствуют
+        w_cnt = self.safety_p1_content_widget if page_num == 1 else self.safety_p2_content_widget
+        w_sig = self.safety_p1_sig_widget if page_num == 1 else self.safety_p2_sig_widget
+        if w_cnt and w_cnt.winfo_exists():
+            for r in var_list:
+                if r[2].get().strip():
+                    w_cnt.delete("1.0", tk.END)
+                    w_cnt.insert("1.0", r[2].get().strip())
+                    break
+        if w_sig and w_sig.winfo_exists():
+            for r in var_list:
+                if r[3].get().strip():
+                    w_sig.delete("1.0", tk.END)
+                    w_sig.insert("1.0", r[3].get().strip())
+                    w_sig.tag_add("center", "1.0", "end")
+                    break
+
         self.schedule_auto_save_safety_briefing()
         self.status_var.set(f"Вставлено {len(lines)} строк на страницу {page_num} инструктажа по ТБ.")
         return "break"
@@ -9121,6 +9269,25 @@ class JournalCoverApp(tk.Tk):
     def auto_save_safety_briefing_data(self, *args):
         """Автоматически сохраняет все данные вкладки 'Инструктаж по ТБ' в config_data и на диск."""
         try:
+            # Синхронизируем значения из больших объединённых ячеек
+            if hasattr(self, 'safety_p1_content_widget') and self.safety_p1_content_widget and self.safety_p1_content_widget.winfo_exists():
+                val_cnt = self.safety_p1_content_widget.get("1.0", "end-1c").strip()
+                for r in self.safety_briefing_p1_vars:
+                    r[2].set(val_cnt)
+            if hasattr(self, 'safety_p1_sig_widget') and self.safety_p1_sig_widget and self.safety_p1_sig_widget.winfo_exists():
+                val_sig = self.safety_p1_sig_widget.get("1.0", "end-1c").strip()
+                for r in self.safety_briefing_p1_vars:
+                    r[3].set(val_sig)
+
+            if hasattr(self, 'safety_p2_content_widget') and self.safety_p2_content_widget and self.safety_p2_content_widget.winfo_exists():
+                val_cnt = self.safety_p2_content_widget.get("1.0", "end-1c").strip()
+                for r in self.safety_briefing_p2_vars:
+                    r[2].set(val_cnt)
+            if hasattr(self, 'safety_p2_sig_widget') and self.safety_p2_sig_widget and self.safety_p2_sig_widget.winfo_exists():
+                val_sig = self.safety_p2_sig_widget.get("1.0", "end-1c").strip()
+                for r in self.safety_briefing_p2_vars:
+                    r[3].set(val_sig)
+
             p1_data = [
                 {
                     "student": r[0].get(),
@@ -9304,8 +9471,8 @@ class JournalCoverApp(tk.Tk):
 
         info_lbl = tk.Label(
             header_card,
-            text="Таблица из 6 основных столбцов (18 полей в строке) и 4 строк: Учебный период, Всего, Мальчиков, Девочек, "
-                 "Количество по классам (I–XI), Сколько лет посещает объединение (1, 2, 3 и более). "
+            text="Таблица из 6 основных столбцов (18 полей в строке) и 3 строк: Учебный период (I полугодие, II полугодие, За год), "
+                 "Всего, Мальчиков, Девочек, Количество по классам (I–XI), Сколько лет посещает объединение (1, 2, 3 и более). "
                  "Ниже таблицы приведены обязательные требования по охране труда и ТБ.",
             font=(self.font_sans, 9),
             bg=card_bg,
@@ -9384,10 +9551,10 @@ class JournalCoverApp(tk.Tk):
         )
         btn_next.pack(side=tk.RIGHT)
 
-        # 2. Карточка таблицы (4 строки, 18 колонок)
+        # 2. Карточка таблицы (3 строки, 18 колонок)
         table_card = tk.LabelFrame(
             scroll_content,
-            text=" Таблица отчёта (4 строки) ",
+            text=" Таблица отчёта (3 строки) ",
             font=(self.font_sans, 10, "bold"),
             bg=card_bg,
             fg="#0f172a",
@@ -9446,9 +9613,9 @@ class JournalCoverApp(tk.Tk):
             h_y = tk.Label(h_table_frame, text=y_txt, font=th_font, bg=th_bg, fg=th_fg, relief=tk.RIDGE, bd=1, width=y_w, pady=2)
             h_y.grid(row=1, column=15 + y_idx, sticky="nsew", padx=1, pady=1)
 
-        # 4 строки данных
+        # 3 строки данных (I полугодие, II полугодие, За год)
         self.annual_report_widgets.clear()
-        for r_idx in range(4):
+        for r_idx in range(3):
             row_widgets = []
             r_data = self.annual_report_vars[r_idx]
 
@@ -9506,7 +9673,7 @@ class JournalCoverApp(tk.Tk):
         # Навигация стрелками Вверх/Вниз
         for r_idx, row_w in enumerate(self.annual_report_widgets):
             for col_idx, w in enumerate(row_w):
-                if r_idx < 3:
+                if r_idx < 2:
                     down_target = self.annual_report_widgets[r_idx + 1][col_idx]
                     w.bind("<Down>", lambda e, t=down_target: t.focus_set())
                 if r_idx > 0:
@@ -9647,16 +9814,45 @@ class JournalCoverApp(tk.Tk):
             else:
                 girls_cnt += 1
 
+        def parse_school_class(cl_str):
+            if not cl_str:
+                return None
+            s = str(cl_str).strip()
+            if not s:
+                return None
+
+            # 1. Проверяем наличие слова 'класс' или 'кл' с числом: '7 класс', '10 кл', 'класс 7а'
+            m_kl = re.search(r'(?:класс|кл\.?)\s*[-:]?\s*(1[0-1]|[1-9])\s*[-–—]?[а-яёa-z]?', s, re.I)
+            if m_kl:
+                return int(m_kl.group(1))
+            m_kl2 = re.search(r'(?<!\d)(1[0-1]|[1-9])\s*[-–—]?[а-яёa-z]?\s*(?:класс|кл\.?)', s, re.I)
+            if m_kl2:
+                return int(m_kl2.group(1))
+
+            # 2. Ищем число 1..11 с литерой (буквой): '7а', '9Г', '10Б', '11-А', '5 "а"'
+            m_lit = re.search(r'(?<!\d)(1[0-1]|[1-9])\s*[-–—\"\'«»]?\s*([а-яёa-z])(?![а-яёa-z\d])', s, re.I)
+            if m_lit:
+                return int(m_lit.group(1))
+
+            # 3. Римские цифры (XI..I) с возможной литерой: 'VII', 'IX-а', 'VII б'
+            m_rom = re.search(r'\b(XI|X|IX|VIII|VII|VI|V|IV|III|II|I)\b', s, re.I)
+            if m_rom:
+                rom_map = {'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5, 'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10, 'XI': 11}
+                return rom_map[m_rom.group(1).upper()]
+
+            # 4. Ищем изолированное число 1..11 (если школа с номером, берем класс)
+            candidates = re.findall(r'(?<!\d)(1[0-1]|[1-9])(?!\d)', s)
+            if candidates:
+                return int(candidates[-1])
+
+            return None
+
         # Распределение по классам I..XI
         class_counts = [0] * 11
         for rec in student_records:
-            cl_str = rec["class"]
-            # Ищем цифру от 1 до 11
-            m = re.search(r'\b(1[0-1]|[1-9])\b', cl_str)
-            if m:
-                num = int(m.group(1))
-                if 1 <= num <= 11:
-                    class_counts[num - 1] += 1
+            cl_num = parse_school_class(rec.get("class", ""))
+            if cl_num and 1 <= cl_num <= 11:
+                class_counts[cl_num - 1] += 1
 
         # Распределение по стажу (1 год, 2 года, 3 и более)
         current_study_year = 2024
@@ -9740,7 +9936,7 @@ class JournalCoverApp(tk.Tk):
 
         for offset, line in enumerate(lines):
             r_i = start_row_idx + offset
-            if r_i >= 4:
+            if r_i >= 3:
                 break
             parts = [p.strip() for p in line.split('\t')]
             row_vars = self.annual_report_vars[r_i]["all_vars"]
