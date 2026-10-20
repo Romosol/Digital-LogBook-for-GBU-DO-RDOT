@@ -3431,6 +3431,7 @@ class JournalCoverApp(tk.Tk):
         self.last_saved_full_file = None
         self.export_month_var = tk.StringVar(value="Сентябрь")
         self.status_var = tk.StringVar(value="Готов к работе. История загружена из config.json")
+        self._undo_stack = []
 
         self.year_var.trace_add("write", self.on_year_input_changed)
         self.teacher_var.trace_add("write", self.on_teacher_input_changed)
@@ -3818,15 +3819,26 @@ class JournalCoverApp(tk.Tk):
     on_end_year_selected = on_end_year_changed
 
     def copy_from_widget(self, widget):
-        """Копирование выделенного текста в буфер обмена."""
+        """Копирование выделенного текста в буфер обмена (поддержка Entry и Text)."""
         try:
-            if widget.selection_present():
+            if isinstance(widget, tk.Text):
+                try:
+                    text = widget.get(tk.SEL_FIRST, tk.SEL_LAST)
+                except Exception:
+                    text = ""
+                if text:
+                    self.clipboard_clear()
+                    self.clipboard_append(text)
+                    self.status_var.set("Текст скопирован в буфер обмена (Ctrl+C)")
+                return
+
+            if hasattr(widget, 'selection_present') and widget.selection_present():
                 text = widget.selection_get()
                 self.clipboard_clear()
                 self.clipboard_append(text)
                 self.status_var.set("Текст скопирован в буфер обмена (Ctrl+C)")
-            else:
-                val = self.year_var.get()
+            elif hasattr(widget, 'get'):
+                val = widget.get()
                 if val:
                     self.clipboard_clear()
                     self.clipboard_append(val)
@@ -3834,12 +3846,181 @@ class JournalCoverApp(tk.Tk):
         except Exception:
             pass
 
+    def push_undo_action(self, desc: str, restore: list = None, text_restore: list = None, single_entry_restore: tuple = None, post_action=None, focus_widget=None):
+        """
+        Сохраняет операцию в стек истории отмены (undo stack).
+        desc: Описание действия для строки статуса (например, 'вставка списка обучающихся')
+        restore: Список кортежей (StringVar, old_value_str)
+        text_restore: Список кортежей (tk.Text, old_text_str)
+        single_entry_restore: Кортеж (Entry_widget, old_value_str)
+        post_action: Callback для повторного сохранения/синхронизации (например, self.auto_save_month_data)
+        focus_widget: Виджет, на который вернуть фокус при отмене
+        """
+        if not hasattr(self, '_undo_stack') or self._undo_stack is None:
+            self._undo_stack = []
+        self._undo_stack.append({
+            "desc": desc,
+            "restore": list(restore) if restore else [],
+            "text_restore": list(text_restore) if text_restore else [],
+            "single_entry_restore": single_entry_restore,
+            "post_action": post_action,
+            "focus_widget": focus_widget
+        })
+        if len(self._undo_stack) > 60:
+            self._undo_stack.pop(0)
+
+    def perform_undo(self, widget=None) -> bool:
+        """
+        Выполняет отмену последнего действия (Ctrl+Z):
+        1. Если фокус в tk.Text со своим буфером отмены — вызывает edit_undo().
+        2. Иначе откатывает последнее действие из стека отмены приложения (_undo_stack).
+        """
+        target = widget or self.focus_get()
+        # Если активен текстовый редактор tk.Text с поддержкой edit_undo:
+        if isinstance(target, tk.Text):
+            try:
+                target.edit_undo()
+                target.event_generate("<<Modified>>")
+                self.status_var.set("Отменено последнее действие в тексте (Ctrl+Z)")
+                return True
+            except Exception:
+                pass
+
+        if hasattr(self, '_undo_stack') and self._undo_stack:
+            item = self._undo_stack.pop()
+            desc = item.get("desc", "последнее действие")
+            # Восстанавливаем связанные переменные StringVar
+            for var, old_val in item.get("restore", []):
+                try:
+                    var.set(old_val)
+                except Exception:
+                    pass
+            # Восстанавливаем текстовые виджеты tk.Text
+            for tw, old_text in item.get("text_restore", []):
+                try:
+                    if tw and tw.winfo_exists():
+                        tw.delete("1.0", tk.END)
+                        if old_text:
+                            tw.insert("1.0", old_text)
+                        tw.event_generate("<<Modified>>")
+                except Exception:
+                    pass
+            # Восстанавливаем одиночный Entry
+            se = item.get("single_entry_restore")
+            if se:
+                e_w, old_val = se
+                try:
+                    if e_w and e_w.winfo_exists():
+                        if hasattr(e_w, 'delete') and hasattr(e_w, 'insert'):
+                            e_w.delete(0, tk.END)
+                            e_w.insert(0, old_val)
+                except Exception:
+                    pass
+            # Пост-обработка (сохранение конфигурации, синхронизация)
+            post_cb = item.get("post_action")
+            if post_cb and callable(post_cb):
+                try:
+                    post_cb()
+                except Exception:
+                    pass
+            # Возврат фокуса
+            fw = item.get("focus_widget")
+            if fw and hasattr(fw, 'focus_set'):
+                try:
+                    if fw.winfo_exists():
+                        fw.focus_set()
+                except Exception:
+                    pass
+            self.status_var.set(f"Отменено: {desc} (Ctrl+Z)")
+            return True
+
+        # Специфичный откат для года
+        if hasattr(self, 'entry_year') and target == getattr(self, 'entry_year', None):
+            last_saved = self.config_data.get("last_academic_year", "2024 / 2025")
+            if hasattr(self, 'year_var'):
+                self.year_var.set(last_saved)
+            self.status_var.set("Отменено: восстановлено предыдущее значение (Ctrl+Z)")
+            return True
+
+        self.status_var.set("Нет действий для отмены (Ctrl+Z)")
+        return False
+
+    def undo_in_widget(self, widget):
+        """Отмена последнего действия в виджете ввода или таблице (Ctrl+Z)."""
+        return self.perform_undo(widget)
+
     def paste_to_widget(self, widget):
-        """Вставка текста из буфера обмена."""
+        """Вставка текста из буфера обмена (поддержка Entry и Text)."""
         try:
-            text = self.clipboard_get()
-            if text:
-                if widget.selection_present():
+            text = self.get_clipboard_text()
+            if not text:
+                return
+            if isinstance(widget, tk.Text):
+                try:
+                    widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
+                except Exception:
+                    pass
+                widget.insert(tk.INSERT, text)
+                widget.see(tk.INSERT)
+                widget.event_generate("<<Modified>>")
+                self.status_var.set("Текст вставлен из буфера обмена (Ctrl+V)")
+                return
+
+            if hasattr(widget, 'get') and hasattr(widget, 'delete') and hasattr(widget, 'insert'):
+                # Если в буфере обмена содержится многострочный список (разделён переводами строк)
+                # и фокус находится в ячейке таблицы, перенаправляем вставку построчно в таблицу
+                if '\n' in text.strip():
+                    # 1. Таблица инструктажа по ТБ
+                    for p in (1, 2):
+                        w_list = getattr(self, f"safety_briefing_p{p}_widgets", [])
+                        for r_i, row in enumerate(w_list):
+                            for c_i, w in enumerate(row):
+                                if w == widget:
+                                    self.paste_safety_briefing_from_clipboard(page_num=p, start_idx=r_i, col_idx=c_i)
+                                    return
+                    # 2. Таблица месяца (ученики / темы)
+                    if hasattr(self, 'months_data'):
+                        for m_k, m_d in self.months_data.items():
+                            for r_i, w in enumerate(m_d.get("student_widgets", [])):
+                                if w == widget:
+                                    self.paste_students_from_clipboard(start_idx=r_i, month_key=m_k)
+                                    return
+                            for r_i, w in enumerate(m_d.get("topic_widgets", [])):
+                                if w == widget:
+                                    self.paste_topics_from_clipboard(start_idx=r_i, month_key=m_k)
+                                    return
+                    # 3. Список обучающихся
+                    if hasattr(self, 'students_list_pages_widgets'):
+                        for p, w_list in self.students_list_pages_widgets.items():
+                            for r_i, row in enumerate(w_list):
+                                for c_i, w in enumerate(row):
+                                    if w == widget:
+                                        self.paste_students_list_from_clipboard(page_num=p, start_idx=r_i, col_idx=c_i)
+                                        return
+                    # 4. Массовые мероприятия
+                    for p in (1, 2):
+                        w_list = getattr(self, f"mass_events_p{p}_widgets", [])
+                        for r_i, row in enumerate(w_list):
+                            for c_i, w in enumerate(row):
+                                if w == widget:
+                                    self.paste_mass_events_from_clipboard(page_num=p, start_idx=r_i, col_idx=c_i)
+                                    return
+                    # 5. Творческие достижения
+                    for p in (1, 2):
+                        w_list = getattr(self, f"creative_p{p}_widgets", [])
+                        for r_i, row in enumerate(w_list):
+                            for c_i, w in enumerate(row):
+                                if w == widget:
+                                    self.paste_creative_achievements_from_clipboard(page_num=p, start_idx=r_i, col_idx=c_i)
+                                    return
+
+                old_val = widget.get()
+                self.push_undo_action(
+                    desc="вставка в поле ввода",
+                    single_entry_restore=(widget, old_val),
+                    focus_widget=widget
+                )
+                if hasattr(widget, 'selection_present') and widget.selection_present():
                     first = widget.index(tk.SEL_FIRST)
                     last = widget.index(tk.SEL_LAST)
                     widget.delete(first, last)
@@ -3851,9 +4032,22 @@ class JournalCoverApp(tk.Tk):
             pass
 
     def cut_from_widget(self, widget):
-        """Вырезание текста в буфер обмена."""
+        """Вырезание текста в буфер обмена (поддержка Entry и Text)."""
         try:
-            if widget.selection_present():
+            if isinstance(widget, tk.Text):
+                try:
+                    text = widget.get(tk.SEL_FIRST, tk.SEL_LAST)
+                    if text:
+                        self.clipboard_clear()
+                        self.clipboard_append(text)
+                        widget.delete(tk.SEL_FIRST, tk.SEL_LAST)
+                        widget.event_generate("<<Modified>>")
+                        self.status_var.set("Текст вырезан в буфер обмена (Ctrl+X)")
+                except Exception:
+                    pass
+                return
+
+            if hasattr(widget, 'selection_present') and widget.selection_present():
                 text = widget.selection_get()
                 self.clipboard_clear()
                 self.clipboard_append(text)
@@ -3865,22 +4059,52 @@ class JournalCoverApp(tk.Tk):
             pass
 
     def select_all_widget(self, widget):
-        """Выделение всего текста в поле ввода."""
+        """Выделение всего текста в поле ввода или текстовой области."""
         try:
-            widget.selection_range(0, tk.END)
-            widget.icursor(tk.END)
+            if isinstance(widget, tk.Text):
+                widget.tag_add(tk.SEL, "1.0", "end-1c")
+                widget.mark_set(tk.INSERT, "1.0")
+                widget.see(tk.INSERT)
+                return
+            if hasattr(widget, 'selection_range'):
+                widget.selection_range(0, tk.END)
+            if hasattr(widget, 'icursor'):
+                widget.icursor(tk.END)
+        except Exception:
+            pass
+
+    def clear_widget_content(self, widget):
+        """Очищает содержимое конкретного поля ввода или текстовой области."""
+        try:
+            if isinstance(widget, tk.Text):
+                widget.delete("1.0", tk.END)
+                widget.event_generate("<<Modified>>")
+                return
+            if isinstance(widget, (tk.Entry, ttk.Entry, ttk.Combobox, ttk.Spinbox)):
+                old_val = widget.get()
+                self.push_undo_action(
+                    desc="очистка поля ввода",
+                    single_entry_restore=(widget, old_val),
+                    focus_widget=widget
+                )
+                widget.delete(0, tk.END)
+                return
+            if hasattr(self, 'year_var') and widget == getattr(self, 'entry_year', None):
+                self.year_var.set("")
         except Exception:
             pass
 
     def attach_context_menu(self, widget):
         """Контекстное меню мыши для поля ввода (правый клик)."""
         menu = tk.Menu(widget, tearoff=0, font=(self.font_sans, 9))
+        menu.add_command(label="↩ Отменить (Ctrl+Z)", command=lambda: self.undo_in_widget(widget))
+        menu.add_separator()
         menu.add_command(label="Копировать (Ctrl+C)", command=lambda: self.copy_from_widget(widget))
         menu.add_command(label="Вставить (Ctrl+V)", command=lambda: self.paste_to_widget(widget))
         menu.add_command(label="Вырезать (Ctrl+X)", command=lambda: self.cut_from_widget(widget))
         menu.add_separator()
         menu.add_command(label="Выделить всё (Ctrl+A)", command=lambda: self.select_all_widget(widget))
-        menu.add_command(label="Очистить поле", command=lambda: self.year_var.set(""))
+        menu.add_command(label="Очистить поле", command=lambda: self.clear_widget_content(widget))
 
         def show_menu(event):
             try:
@@ -3906,47 +4130,95 @@ class JournalCoverApp(tk.Tk):
         # На macOS Command клавиша:
         return bool((state & 0x4) or (state & 0x8) or (state & 0x10000))
 
-    def handle_entry_shortcuts(self, event):
-        """Универсальный перехват сочетаний клавиш с поддержкой русской раскладки (RU/EN)."""
+    def get_shortcut_action(self, event) -> str:
+        """
+        Универсально распознает действие сочетания клавиш (RU/EN раскладки, Mac/Win/Linux).
+        Возвращает: 'copy', 'paste', 'cut', 'select_all', 'undo', 'save', 'tab_X' или None.
+        """
+        if event is None:
+            return None
+
+        state = getattr(event, 'state', 0)
+        code = getattr(event, 'keycode', 0)
+        key = (getattr(event, 'keysym', '') or "").lower()
+        char = getattr(event, 'char', '')
+
+        # Shift + Insert -> paste
+        if (state & 0x1) and (code == 45 or key == 'insert'):
+            return "paste"
+
+        # Проверка зажатого Ctrl / Command
         if not self.is_ctrl_pressed(event):
             return None
 
-        key = (getattr(event, 'keysym', '') or "").lower()
-        code = getattr(event, 'keycode', 0)
+        # 1. Переключение вкладок: Ctrl+0..9 / Cmd+0..9
+        digits = {
+            '0': 0, '1': 1, '2': 2, '3': 3, '4': 4,
+            '5': 5, '6': 6, '7': 7, '8': 8, '9': 9
+        }
+        if key in digits:
+            return f"tab_{digits[key]}"
+        if (48 <= code <= 57 and not key) or (96 <= code <= 105):
+            tab_val = (code - 48) if (48 <= code <= 57) else (code - 96)
+            return f"tab_{tab_val}"
+
+        # 2. Выделить всё: Ctrl+A / RU: Ctrl+Ф (keycode 65 на Windows, 38 на Linux)
+        if key in ('a', 'cyrillic_ef', 'cyrillic_f', 'ф') or code in (65, 38) or char == '\x01':
+            return "select_all"
+
+        # 3. Копировать: Ctrl+C / RU: Ctrl+С (keycode 67 на Windows, 54 на Linux)
+        if key in ('c', 'cyrillic_es', 'cyrillic_s', 'с') or code == 67 or char == '\x03':
+            return "copy"
+
+        # 4. Вставить: Ctrl+V / RU: Ctrl+М / Shift+Insert (keycode 86 на Windows, 55 на Linux)
+        if key in ('v', 'cyrillic_em', 'cyrillic_m', 'м') or code in (86, 55) or char == '\x16':
+            return "paste"
+        # На некоторых Linux системах keycode 54 может быть V, если char == '\x16'
+        if code == 54 and sys.platform != "win32" and char != '\x03':
+            return "paste"
+
+        # 5. Вырезать: Ctrl+X / RU: Ctrl+Ч (keycode 88 на Windows, 53 на Linux)
+        if key in ('x', 'cyrillic_che', 'cyrillic_ch', 'ч') or code == 88 or char == '\x18':
+            return "cut"
+        if code == 53 and sys.platform != "win32" and key not in digits:
+            return "cut"
+
+        # 6. Отменить: Ctrl+Z / RU: Ctrl+Я (keycode 90 на Windows, 52 на Linux)
+        if key in ('z', 'cyrillic_ya', 'cyrillic_ia', 'я') or code in (90, 52) or char in ('\x1a', 'я', 'Я'):
+            return "undo"
+
+        # 7. Сохранить: Ctrl+S / RU: Ctrl+Ы (keycode 83 на Windows, 39 на Linux)
+        if key in ('s', 'cyrillic_yeru', 'ы') or code in (83, 39) or char == '\x13':
+            return "save"
+
+        return None
+
+    def handle_entry_shortcuts(self, event):
+        """Универсальный перехват сочетаний клавиш с поддержкой русской раскладки (RU/EN)."""
+        action = self.get_shortcut_action(event)
+        if not action:
+            return None
+
         widget = getattr(event, 'widget', None)
         if not widget:
             return None
 
-        # 1. Ctrl + A / Cmd + A (Выделить всё) - keycode 65 на Windows
-        if key in ('a', 'cyrillic_ef') or code == 65:
+        if action == "select_all":
             self.select_all_widget(widget)
             return "break"
-
-        # 2. Ctrl + C / Cmd + C (Копировать) - keycode 67 на Windows
-        elif key in ('c', 'cyrillic_es') or code == 67:
+        elif action == "copy":
             self.copy_from_widget(widget)
             return "break"
-
-        # 3. Ctrl + V / Cmd + V (Вставить) - keycode 86 на Windows
-        elif key in ('v', 'cyrillic_em', 'cyrillic_m') or code in (86, 54):
+        elif action == "paste":
             self.paste_to_widget(widget)
             return "break"
-
-        # 4. Ctrl + X / Cmd + X (Вырезать) - keycode 88 на Windows
-        elif key in ('x', 'cyrillic_che') or code == 88:
+        elif action == "cut":
             self.cut_from_widget(widget)
             return "break"
-
-        # 5. Ctrl + Z / Cmd + Z (Отменить) - keycode 90 на Windows
-        elif key in ('z', 'cyrillic_ya') or code == 90:
-            last_saved = self.config_data.get("last_academic_year", "2024 / 2025")
-            if hasattr(self, 'year_var'):
-                self.year_var.set(last_saved)
-            self.status_var.set("Отменено: восстановлено предыдущее значение (Ctrl+Z)")
+        elif action == "undo":
+            self.undo_in_widget(widget)
             return "break"
-
-        # 6. Ctrl + S / Cmd + S (Сохранить все данные) - keycode 83 на Windows
-        elif key in ('s', 'cyrillic_yeru') or code == 83:
+        elif action == "save":
             self.save_all_pending_data()
             self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
             return "break"
@@ -3958,10 +4230,15 @@ class JournalCoverApp(tk.Tk):
         help_text = (
             "Доступные горячие клавиши (RU / EN):\n\n"
             "  • Ctrl + C (Cmd+C) — Копировать\n"
-            "  • Ctrl + V (Cmd+V) — Вставить\n"
+            "  • Ctrl + V (Cmd+V) — Вставить (в таблицах — построчно)\n"
             "  • Ctrl + A (Cmd+A) — Выделить всё\n"
             "  • Ctrl + X (Cmd+X) — Вырезать\n"
-            "  • Ctrl + Z (Cmd+Z) — Отменить"
+            "  • Ctrl + Z (Cmd+Z) — Отменить последнее действие (ввод, вставка списка детей, таблиц)\n"
+            "  • Ctrl + S (Cmd+S) — Сохранить все данные журнала\n"
+            "  • Ctrl + 0..5 (Cmd+0..5) — Переключение вкладок\n"
+            "  • Shift + Insert — Вставить из буфера обмена\n"
+            "  • F1 — Справка по горячим клавишам\n\n"
+            "Все сочетания клавиш работают одинаково на русской и английской раскладках клавиатуры во всех вкладках журнала."
         )
         messagebox.showinfo("Горячие клавиши", help_text)
 
@@ -7100,6 +7377,8 @@ class JournalCoverApp(tk.Tk):
     def attach_mass_event_context_menu(self, widget, page_num: int, idx: int):
         """Контекстное меню для ячеек таблицы массовых мероприятий."""
         menu = tk.Menu(widget, tearoff=0)
+        menu.add_command(label="↩ Отменить (Ctrl+Z)", command=lambda: self.undo_in_widget(widget))
+        menu.add_separator()
         menu.add_command(
             label="📋 Вставить строки из буфера (Ctrl+V)",
             command=lambda: self.paste_mass_events_from_clipboard(page_num=page_num, start_idx=idx)
@@ -7117,25 +7396,29 @@ class JournalCoverApp(tk.Tk):
         widget.bind("<Button-2>", show_menu)
 
     def on_mass_event_entry_keypress(self, event, idx: int, page_num: int):
-        """Обработка сочетаний клавиш в ячейках таблицы мероприятий."""
-        if self.is_paste_event(event):
-            self.paste_mass_events_from_clipboard(page_num=page_num, start_idx=idx, event=event)
-            return "break"
-
-        if not self.is_ctrl_pressed(event):
+        """Обработка сочетаний клавиш в ячейках таблицы мероприятий (RU / EN)."""
+        action = self.get_shortcut_action(event)
+        if not action:
             return None
 
-        code = getattr(event, 'keycode', 0)
-        key = (getattr(event, 'keysym', '') or "").lower()
-
-        if key in ('a', 'cyrillic_ef') or code == 65:
-            self.select_all_widget(event.widget)
+        if action == "paste":
+            self.paste_mass_events_from_clipboard(page_num=page_num, start_idx=idx, event=event)
             return "break"
-        elif key in ('c', 'cyrillic_es') or code == 67:
+        elif action == "copy":
             self.copy_from_widget(event.widget)
             return "break"
-        elif key in ('x', 'cyrillic_che') or code == 88:
+        elif action == "cut":
             self.cut_from_widget(event.widget)
+            return "break"
+        elif action == "select_all":
+            self.select_all_widget(event.widget)
+            return "break"
+        elif action == "undo":
+            self.undo_in_widget(event.widget)
+            return "break"
+        elif action == "save":
+            self.save_all_pending_data()
+            self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
             return "break"
 
         return None
@@ -7151,10 +7434,17 @@ class JournalCoverApp(tk.Tk):
         if not messagebox.askyesno("Очистить таблицу", f"Вы уверены, что хотите полностью очистить {pg_title}?"):
             return
         var_list = self.mass_events_p1_vars if page_num == 1 else self.mass_events_p2_vars
+        snapshot = []
         for r in var_list:
             for v in r:
+                snapshot.append((v, v.get()))
                 v.set("")
         self.auto_save_mass_events_data()
+        self.push_undo_action(
+            desc=f"очистка таблицы {pg_title}",
+            restore=snapshot,
+            post_action=self.auto_save_mass_events_data
+        )
         self.status_var.set(f"Таблица {pg_title} очищена.")
 
     def auto_save_mass_events_data(self, *args):
@@ -7200,6 +7490,16 @@ class JournalCoverApp(tk.Tk):
 
         var_list = self.mass_events_p1_vars if page_num == 1 else self.mass_events_p2_vars
         count = 0
+
+        # Снимок значений для отмены действия (Undo / Ctrl+Z)
+        snapshot = []
+        for offset in range(len(lines)):
+            idx = start_idx + offset
+            if idx >= 26:
+                break
+            for c_i in range(5):
+                snapshot.append((var_list[idx][c_i], var_list[idx][c_i].get()))
+
         for offset, line in enumerate(lines):
             idx = start_idx + offset
             if idx >= 26:
@@ -7234,6 +7534,12 @@ class JournalCoverApp(tk.Tk):
 
         self.auto_save_mass_events_data()
         pg_str = f"стр. {29 + page_num}"
+        if snapshot:
+            self.push_undo_action(
+                desc=f"вставка строк мероприятий ({count} записей, {pg_str})",
+                restore=snapshot,
+                post_action=self.auto_save_mass_events_data
+            )
         self.status_var.set(f"Вставлено {count} записей мероприятий ({pg_str}, начиная со строки {start_idx + 1}).")
         return "break"
 
@@ -7617,6 +7923,8 @@ class JournalCoverApp(tk.Tk):
     def attach_creative_context_menu(self, widget, page_num: int, idx: int, col_idx: int):
         """Контекстное меню для ячеек таблицы творческих достижений."""
         menu = tk.Menu(widget, tearoff=0)
+        menu.add_command(label="↩ Отменить (Ctrl+Z)", command=lambda: self.undo_in_widget(widget))
+        menu.add_separator()
         menu.add_command(
             label="📋 Вставить строки из буфера (Ctrl+V)",
             command=lambda: self.paste_creative_achievements_from_clipboard(page_num=page_num, start_idx=idx, col_idx=col_idx)
@@ -7639,25 +7947,29 @@ class JournalCoverApp(tk.Tk):
         widget.bind("<Button-2>", show_menu)
 
     def on_creative_entry_keypress(self, event, idx: int, page_num: int, col_idx: int):
-        """Обработка сочетаний клавиш в ячейках таблицы достижений."""
-        if self.is_paste_event(event):
-            self.paste_creative_achievements_from_clipboard(page_num=page_num, start_idx=idx, col_idx=col_idx, event=event)
-            return "break"
-
-        if not self.is_ctrl_pressed(event):
+        """Обработка сочетаний клавиш в ячейках таблицы достижений (RU / EN)."""
+        action = self.get_shortcut_action(event)
+        if not action:
             return None
 
-        code = getattr(event, 'keycode', 0)
-        key = (getattr(event, 'keysym', '') or "").lower()
-
-        if key in ('a', 'cyrillic_ef') or code == 65:
-            self.select_all_widget(event.widget)
+        if action == "paste":
+            self.paste_creative_achievements_from_clipboard(page_num=page_num, start_idx=idx, col_idx=col_idx, event=event)
             return "break"
-        elif key in ('c', 'cyrillic_es') or code == 67:
+        elif action == "copy":
             self.copy_from_widget(event.widget)
             return "break"
-        elif key in ('x', 'cyrillic_che') or code == 88:
+        elif action == "cut":
             self.cut_from_widget(event.widget)
+            return "break"
+        elif action == "select_all":
+            self.select_all_widget(event.widget)
+            return "break"
+        elif action == "undo":
+            self.undo_in_widget(event.widget)
+            return "break"
+        elif action == "save":
+            self.save_all_pending_data()
+            self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
             return "break"
 
         return None
@@ -7673,10 +7985,17 @@ class JournalCoverApp(tk.Tk):
         if not messagebox.askyesno("Очистить таблицу", f"Вы уверены, что хотите полностью очистить {pg_title}?"):
             return
         var_list = self.creative_achievements_p1_vars if page_num == 1 else self.creative_achievements_p2_vars
+        snapshot = []
         for r in var_list:
             for v in r:
+                snapshot.append((v, v.get()))
                 v.set("")
         self.auto_save_creative_achievements_data()
+        self.push_undo_action(
+            desc=f"очистка таблицы {pg_title}",
+            restore=snapshot,
+            post_action=self.auto_save_creative_achievements_data
+        )
         self.status_var.set(f"Таблица {pg_title} очищена.")
 
     def fill_creative_students_from_group(self):
@@ -7691,6 +8010,11 @@ class JournalCoverApp(tk.Tk):
             self.status_var.set("Список обучающихся группы пуст.")
             return
 
+        snapshot = []
+        for i in range(min(len(st_vars), 26)):
+            v = self.creative_achievements_p1_vars[i][0]
+            snapshot.append((v, v.get()))
+
         count = 0
         for i, s_var in enumerate(st_vars):
             if i >= 26:
@@ -7701,6 +8025,12 @@ class JournalCoverApp(tk.Tk):
                 count += 1
 
         self.auto_save_creative_achievements_data()
+        if snapshot:
+            self.push_undo_action(
+                desc=f"заполнение {count} обучающихся в достижения",
+                restore=snapshot,
+                post_action=self.auto_save_creative_achievements_data
+            )
         self.status_var.set(f"Заполнено {count} фамилий обучающихся из группы.")
 
     def auto_save_creative_achievements_data(self, *args):
@@ -7740,6 +8070,16 @@ class JournalCoverApp(tk.Tk):
 
         var_list = self.creative_achievements_p1_vars if page_num == 1 else self.creative_achievements_p2_vars
         count = 0
+
+        # Снимок значений для отмены действия (Undo / Ctrl+Z)
+        snapshot = []
+        for offset in range(len(lines)):
+            idx = start_idx + offset
+            if idx >= 26:
+                break
+            for c_i in range(2):
+                snapshot.append((var_list[idx][c_i], var_list[idx][c_i].get()))
+
         for offset, line in enumerate(lines):
             idx = start_idx + offset
             if idx >= 26:
@@ -7764,6 +8104,12 @@ class JournalCoverApp(tk.Tk):
 
         self.auto_save_creative_achievements_data()
         pg_str = f"стр. {29 + page_num}"
+        if snapshot:
+            self.push_undo_action(
+                desc=f"вставка творческих достижений ({count} записей, {pg_str})",
+                restore=snapshot,
+                post_action=self.auto_save_creative_achievements_data
+            )
         self.status_var.set(f"Вставлено {count} записей достижений ({pg_str}, начиная со строки {start_idx + 1}).")
         return "break"
 
@@ -8252,6 +8598,8 @@ class JournalCoverApp(tk.Tk):
     def attach_students_list_context_menu(self, widget, idx: int, page_num: int, col_idx: int):
         """Контекстное меню для ячеек таблицы списка обучающихся."""
         menu = tk.Menu(widget, tearoff=0)
+        menu.add_command(label="↩ Отменить (Ctrl+Z)", command=lambda: self.undo_in_widget(widget))
+        menu.add_separator()
         menu.add_command(
             label="📋 Вставить строки из буфера (Ctrl+V)",
             command=lambda: self.paste_students_list_from_clipboard(page_num=page_num, start_idx=idx, col_idx=col_idx)
@@ -8274,25 +8622,29 @@ class JournalCoverApp(tk.Tk):
         widget.bind("<Button-2>", show_menu)
 
     def on_students_list_entry_keypress(self, event, idx: int, page_num: int, col_idx: int):
-        """Обработка сочетаний клавиш в ячейках таблицы списка обучающихся."""
-        if self.is_paste_event(event):
-            self.paste_students_list_from_clipboard(page_num=page_num, start_idx=idx, col_idx=col_idx, event=event)
-            return "break"
-
-        if not self.is_ctrl_pressed(event):
+        """Обработка сочетаний клавиш в ячейках таблицы списка обучающихся (RU / EN)."""
+        action = self.get_shortcut_action(event)
+        if not action:
             return None
 
-        code = getattr(event, 'keycode', 0)
-        key = (getattr(event, 'keysym', '') or "").lower()
-
-        if key in ('a', 'cyrillic_ef') or code == 65:
-            self.select_all_widget(event.widget)
+        if action == "paste":
+            self.paste_students_list_from_clipboard(page_num=page_num, start_idx=idx, col_idx=col_idx, event=event)
             return "break"
-        elif key in ('c', 'cyrillic_es') or code == 67:
+        elif action == "copy":
             self.copy_from_widget(event.widget)
             return "break"
-        elif key in ('x', 'cyrillic_che') or code == 88:
+        elif action == "cut":
             self.cut_from_widget(event.widget)
+            return "break"
+        elif action == "select_all":
+            self.select_all_widget(event.widget)
+            return "break"
+        elif action == "undo":
+            self.undo_in_widget(event.widget)
+            return "break"
+        elif action == "save":
+            self.save_all_pending_data()
+            self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
             return "break"
 
         return None
@@ -8330,6 +8682,12 @@ class JournalCoverApp(tk.Tk):
         offset = 0 if page_num == 1 else (10 if page_num == 3 else 20)
         var_list = self.students_list_pages_vars.get(page_num, [])
 
+        snapshot = []
+        for i in range(10):
+            st_idx = offset + i
+            if st_idx < len(st_vars):
+                snapshot.append((var_list[i][0], var_list[i][0].get()))
+
         count = 0
         for i in range(10):
             st_idx = offset + i
@@ -8340,6 +8698,12 @@ class JournalCoverApp(tk.Tk):
                     count += 1
 
         self.auto_save_students_list_data()
+        if snapshot:
+            self.push_undo_action(
+                desc=f"заполнение {count} фамилий на стр. {page_num}",
+                restore=snapshot,
+                post_action=self.auto_save_students_list_data
+            )
         self.status_var.set(f"Заполнено {count} фамилий обучающихся на стр. {page_num}.")
 
     def fill_all_students_from_group(self):
@@ -8355,6 +8719,12 @@ class JournalCoverApp(tk.Tk):
             messagebox.showwarning("Список пуст", "В группе пока нет заполненных обучающихся.")
             return
 
+        snapshot = []
+        for p_idx in (1, 3, 5):
+            vl = self.students_list_pages_vars.get(p_idx, [])
+            for row in vl:
+                snapshot.append((row[0], row[0].get()))
+
         total_filled = 0
         for p_idx, offset in ((1, 0), (3, 10), (5, 20)):
             var_list = self.students_list_pages_vars.get(p_idx, [])
@@ -8367,6 +8737,12 @@ class JournalCoverApp(tk.Tk):
                         total_filled += 1
 
         self.auto_save_students_list_data()
+        if snapshot:
+            self.push_undo_action(
+                desc=f"заполнение всех {total_filled} обучающихся группы",
+                restore=snapshot,
+                post_action=self.auto_save_students_list_data
+            )
         self.status_var.set(f"Заполнено {total_filled} обучающихся на страницах 1, 3 и 5.")
 
     def schedule_auto_save_students_list(self):
@@ -8433,6 +8809,17 @@ class JournalCoverApp(tk.Tk):
         count = 0
         num_cols = 5  # У каждой страницы ровно 5 редактируемых столбцов
 
+        # Снимок для отмены действия (Undo / Ctrl+Z)
+        snapshot = []
+        for offset in range(len(lines)):
+            idx = start_idx + offset
+            if idx >= 10:
+                break
+            for c_i in range(num_cols):
+                if c_i < len(var_list[idx]):
+                    v = var_list[idx][c_i]
+                    snapshot.append((v, v.get()))
+
         for offset, line in enumerate(lines):
             idx = start_idx + offset
             if idx >= 10:
@@ -8461,6 +8848,12 @@ class JournalCoverApp(tk.Tk):
 
         self.auto_save_students_list_data()
         pg_str = f"стр. {33 + page_num}"
+        if snapshot:
+            self.push_undo_action(
+                desc=f"вставка списка обучающихся ({count} записей, {pg_str})",
+                restore=snapshot,
+                post_action=self.auto_save_students_list_data
+            )
         self.status_var.set(f"Вставлено {count} записей ({pg_str}, начиная со строки {start_idx + 1}).")
         return "break"
 
@@ -8906,19 +9299,21 @@ class JournalCoverApp(tk.Tk):
             # Столбец 1: Фамилия, имя обучающегося
             e_student = ttk.Entry(grid_frame, textvariable=var_list[r_idx][0], font=(self.font_sans, 9), width=28)
             e_student.grid(row=r_idx + 1, column=1, sticky="nsew", padx=1, pady=1)
-            self.attach_context_menu(e_student)
-            e_student.bind("<KeyPress>", self.handle_entry_shortcuts, add="+")
-            e_student.bind("<Control-v>", lambda ev, r=r_idx: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=0, event=ev))
-            e_student.bind("<Control-V>", lambda ev, r=r_idx: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=0, event=ev))
+            self.attach_safety_briefing_context_menu(e_student, idx=r_idx, page_num=page_num, col_idx=0)
+            e_student.bind("<KeyPress>", lambda ev, r=r_idx: self.on_safety_briefing_entry_keypress(ev, r, page_num, col_idx=0), add="+")
+            e_student.bind("<<Paste>>", lambda ev, r=r_idx: self.on_safety_briefing_entry_paste(ev, r, page_num, col_idx=0))
+            for seq in ("<Control-v>", "<Control-V>", "<Command-v>", "<Command-V>", "<Shift-Insert>"):
+                e_student.bind(seq, lambda ev, r=r_idx: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=0, event=ev))
             row_widgets.append(e_student)
 
             # Столбец 2: Дата проведения инструктажа
             e_date = ttk.Entry(grid_frame, textvariable=var_list[r_idx][1], font=(self.font_sans, 9), width=16, justify="center")
             e_date.grid(row=r_idx + 1, column=2, sticky="nsew", padx=1, pady=1)
-            self.attach_context_menu(e_date)
-            e_date.bind("<KeyPress>", self.handle_entry_shortcuts, add="+")
-            e_date.bind("<Control-v>", lambda ev, r=r_idx: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=1, event=ev))
-            e_date.bind("<Control-V>", lambda ev, r=r_idx: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=1, event=ev))
+            self.attach_safety_briefing_context_menu(e_date, idx=r_idx, page_num=page_num, col_idx=1)
+            e_date.bind("<KeyPress>", lambda ev, r=r_idx: self.on_safety_briefing_entry_keypress(ev, r, page_num, col_idx=1), add="+")
+            e_date.bind("<<Paste>>", lambda ev, r=r_idx: self.on_safety_briefing_entry_paste(ev, r, page_num, col_idx=1))
+            for seq in ("<Control-v>", "<Control-V>", "<Command-v>", "<Command-V>", "<Shift-Insert>"):
+                e_date.bind(seq, lambda ev, r=r_idx: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=r, col_idx=1, event=ev))
             row_widgets.append(e_date)
 
             widget_list.append(row_widgets)
@@ -8936,7 +9331,8 @@ class JournalCoverApp(tk.Tk):
             relief=tk.SOLID,
             bd=1,
             padx=8,
-            pady=8
+            pady=8,
+            undo=True
         )
         content_text.grid(row=1, column=3, rowspan=28, sticky="nsew", padx=1, pady=1)
         self.attach_context_menu(content_text)
@@ -8954,7 +9350,8 @@ class JournalCoverApp(tk.Tk):
             relief=tk.SOLID,
             bd=1,
             padx=8,
-            pady=8
+            pady=8,
+            undo=True
         )
         sig_text.tag_configure("center", justify="center")
         sig_text.grid(row=1, column=4, rowspan=28, sticky="nsew", padx=1, pady=1)
@@ -9001,6 +9398,36 @@ class JournalCoverApp(tk.Tk):
         sig_text.bind("<KeyRelease>", _on_sig_change)
         sig_text.bind("<FocusOut>", _on_sig_change)
 
+        content_text.bind("<KeyPress>", lambda ev, w=content_text: self.on_safety_text_keypress(ev, w, _on_content_change), add="+")
+        for seq in ("<Control-v>", "<Control-V>", "<Command-v>", "<Command-V>", "<Shift-Insert>"):
+            content_text.bind(seq, lambda ev: (self.paste_to_widget(content_text), _on_content_change(), "break")[2])
+        for seq in ("<Control-a>", "<Control-A>", "<Command-a>", "<Command-A>"):
+            content_text.bind(seq, lambda ev: (self.select_all_widget(content_text), "break")[1])
+        for seq in ("<Control-c>", "<Control-C>", "<Command-c>", "<Command-C>"):
+            content_text.bind(seq, lambda ev: (self.copy_from_widget(content_text), "break")[1])
+        for seq in ("<Control-x>", "<Control-X>", "<Command-x>", "<Command-X>"):
+            content_text.bind(seq, lambda ev: (self.cut_from_widget(content_text), _on_content_change(), "break")[2])
+        for seq in ("<Control-z>", "<Control-Z>", "<Command-z>", "<Command-Z>"):
+            content_text.bind(seq, lambda ev: (self.undo_in_widget(content_text), _on_content_change(), "break")[2])
+
+        sig_text.bind("<KeyPress>", lambda ev, w=sig_text: self.on_safety_text_keypress(ev, w, _on_sig_change), add="+")
+        for seq in ("<Control-v>", "<Control-V>", "<Command-v>", "<Command-V>", "<Shift-Insert>"):
+            sig_text.bind(seq, lambda ev: (self.paste_to_widget(sig_text), _on_sig_change(), "break")[2])
+        for seq in ("<Control-a>", "<Control-A>", "<Command-a>", "<Command-A>"):
+            sig_text.bind(seq, lambda ev: (self.select_all_widget(sig_text), "break")[1])
+        for seq in ("<Control-c>", "<Control-C>", "<Command-c>", "<Command-C>"):
+            sig_text.bind(seq, lambda ev: (self.copy_from_widget(sig_text), "break")[1])
+        for seq in ("<Control-x>", "<Control-X>", "<Command-x>", "<Command-X>"):
+            sig_text.bind(seq, lambda ev: (self.cut_from_widget(sig_text), _on_sig_change(), "break")[2])
+        for seq in ("<Control-z>", "<Control-Z>", "<Command-z>", "<Command-Z>"):
+            sig_text.bind(seq, lambda ev: (self.undo_in_widget(sig_text), _on_sig_change(), "break")[2])
+
+        # Привязка глобальной вставки и сочетаний клавиш на контейнеры страницы
+        for w in (parent_tab, table_container, canvas, grid_frame):
+            for seq in ("<Control-v>", "<Control-V>", "<Command-v>", "<Command-V>", "<Shift-Insert>"):
+                w.bind(seq, lambda ev, p=page_num: self.paste_safety_briefing_from_clipboard(page_num=p, start_idx=0, col_idx=0, event=ev))
+            w.bind("<KeyPress>", lambda ev, p=page_num: self.on_safety_briefing_container_keypress(ev, p), add="+")
+
         # Tab переходы
         content_text.bind("<Tab>", lambda e: (sig_text.focus_set(), "break")[1])
         sig_text.bind("<Shift-Tab>", lambda e: (content_text.focus_set(), "break")[1])
@@ -9044,6 +9471,7 @@ class JournalCoverApp(tk.Tk):
             return
 
         var_list = self.safety_briefing_p1_vars if page_num == 1 else self.safety_briefing_p2_vars
+        snapshot = [(var_list[i][0], var_list[i][0].get()) for i in range(min(len(students), 28))]
         count = 0
         for i, st_name in enumerate(students):
             if i >= 28:
@@ -9052,6 +9480,12 @@ class JournalCoverApp(tk.Tk):
             count += 1
 
         self.schedule_auto_save_safety_briefing()
+        if snapshot:
+            self.push_undo_action(
+                desc=f"вставка {count} обучающихся на страницу {page_num} ТБ",
+                restore=snapshot,
+                post_action=self.auto_save_safety_briefing_data
+            )
         self.status_var.set(f"Вставлено {count} обучающихся на страницу {page_num} инструктажа по ТБ.")
         messagebox.showinfo("Успешно", f"Вставлено {count} обучающихся на страницу {page_num}.")
 
@@ -9111,6 +9545,7 @@ class JournalCoverApp(tk.Tk):
             return
 
         var_list = self.safety_briefing_p1_vars if page_num == 1 else self.safety_briefing_p2_vars
+        snapshot = [(r[1], r[1].get()) for r in var_list]
         count = 0
         for r in var_list:
             if r[0].get().strip():
@@ -9123,6 +9558,12 @@ class JournalCoverApp(tk.Tk):
             count = 28
 
         self.schedule_auto_save_safety_briefing()
+        if snapshot:
+            self.push_undo_action(
+                desc=f"простановка даты '{ans}' на стр. {page_num} ТБ",
+                restore=snapshot,
+                post_action=self.auto_save_safety_briefing_data
+            )
         self.status_var.set(f"Дата '{ans}' проставлена в {count} строк на странице {page_num}.")
 
     def fill_safety_content_for_all(self, page_num: int):
@@ -9137,15 +9578,25 @@ class JournalCoverApp(tk.Tk):
             return
 
         var_list = self.safety_briefing_p1_vars if page_num == 1 else self.safety_briefing_p2_vars
+        snapshot = [(r[2], r[2].get()) for r in var_list]
+        w_cnt = self.safety_p1_content_widget if page_num == 1 else self.safety_p2_content_widget
+        text_snap = [(w_cnt, w_cnt.get("1.0", "end-1c"))] if w_cnt and w_cnt.winfo_exists() else []
+
         for r in var_list:
             r[2].set(ans)
 
-        w_cnt = self.safety_p1_content_widget if page_num == 1 else self.safety_p2_content_widget
         if w_cnt and w_cnt.winfo_exists():
             w_cnt.delete("1.0", tk.END)
             w_cnt.insert("1.0", ans)
 
         self.schedule_auto_save_safety_briefing()
+        if snapshot:
+            self.push_undo_action(
+                desc=f"обновление темы инструктажа на стр. {page_num}",
+                restore=snapshot,
+                text_restore=text_snap,
+                post_action=lambda p=page_num: (self.auto_save_safety_briefing_data(), self._sync_safety_text_from_vars(p))
+            )
         self.status_var.set(f"Содержание инструктажа обновлено на странице {page_num}.")
 
     def fill_safety_signature_for_all(self, page_num: int):
@@ -9164,16 +9615,26 @@ class JournalCoverApp(tk.Tk):
             teacher = teacher.strip()
 
         var_list = self.safety_briefing_p1_vars if page_num == 1 else self.safety_briefing_p2_vars
+        snapshot = [(r[3], r[3].get()) for r in var_list]
+        w_sig = self.safety_p1_sig_widget if page_num == 1 else self.safety_p2_sig_widget
+        text_snap = [(w_sig, w_sig.get("1.0", "end-1c"))] if w_sig and w_sig.winfo_exists() else []
+
         for r in var_list:
             r[3].set(teacher)
 
-        w_sig = self.safety_p1_sig_widget if page_num == 1 else self.safety_p2_sig_widget
         if w_sig and w_sig.winfo_exists():
             w_sig.delete("1.0", tk.END)
             w_sig.insert("1.0", teacher)
             w_sig.tag_add("center", "1.0", "end")
 
         self.schedule_auto_save_safety_briefing()
+        if snapshot:
+            self.push_undo_action(
+                desc=f"простановка подписи на стр. {page_num} ТБ",
+                restore=snapshot,
+                text_restore=text_snap,
+                post_action=lambda p=page_num: (self.auto_save_safety_briefing_data(), self._sync_safety_text_from_vars(p))
+            )
         self.status_var.set(f"Подпись педагога '{teacher}' проставлена на странице {page_num}.")
 
     def clear_safety_briefing_page(self, page_num: int):
@@ -9181,19 +9642,31 @@ class JournalCoverApp(tk.Tk):
         if not messagebox.askyesno("Очистить страницу", f"Вы уверены, что хотите полностью очистить все данные на странице {page_num}?"):
             return
         var_list = self.safety_briefing_p1_vars if page_num == 1 else self.safety_briefing_p2_vars
+        snapshot = []
         for r in var_list:
             for v in r:
+                snapshot.append((v, v.get()))
                 v.set("")
 
         w_cnt = self.safety_p1_content_widget if page_num == 1 else self.safety_p2_content_widget
+        w_sig = self.safety_p1_sig_widget if page_num == 1 else self.safety_p2_sig_widget
+        text_snap = []
         if w_cnt and w_cnt.winfo_exists():
+            text_snap.append((w_cnt, w_cnt.get("1.0", "end-1c")))
             w_cnt.delete("1.0", tk.END)
 
-        w_sig = self.safety_p1_sig_widget if page_num == 1 else self.safety_p2_sig_widget
         if w_sig and w_sig.winfo_exists():
+            text_snap.append((w_sig, w_sig.get("1.0", "end-1c")))
             w_sig.delete("1.0", tk.END)
 
         self.auto_save_safety_briefing_data()
+        if snapshot:
+            self.push_undo_action(
+                desc=f"очистка страницы {page_num} ТБ",
+                restore=snapshot,
+                text_restore=text_snap,
+                post_action=lambda p=page_num: (self.auto_save_safety_briefing_data(), self._sync_safety_text_from_vars(p))
+            )
         self.status_var.set(f"Страница {page_num} инструктажа по ТБ очищена.")
 
     def paste_safety_briefing_from_clipboard(self, page_num: int = 1, start_idx: int = 0, col_idx: int = 0, event=None):
@@ -9211,16 +9684,38 @@ class JournalCoverApp(tk.Tk):
         var_list = self.safety_briefing_p1_vars if page_num == 1 else self.safety_briefing_p2_vars
         num_cols = 4
 
+        # Снимок значений для отмены (Undo / Ctrl+Z)
+        snapshot = []
+        for offset in range(len(lines)):
+            idx = start_idx + offset
+            if idx >= 28:
+                break
+            for c_i in range(num_cols):
+                if c_i < len(var_list[idx]):
+                    v = var_list[idx][c_i]
+                    snapshot.append((v, v.get()))
+
+        w_cnt = self.safety_p1_content_widget if page_num == 1 else self.safety_p2_content_widget
+        w_sig = self.safety_p1_sig_widget if page_num == 1 else self.safety_p2_sig_widget
+        text_snap = []
+        if w_cnt and w_cnt.winfo_exists():
+            text_snap.append((w_cnt, w_cnt.get("1.0", "end-1c")))
+        if w_sig and w_sig.winfo_exists():
+            text_snap.append((w_sig, w_sig.get("1.0", "end-1c")))
+
+        count = 0
         for offset, line in enumerate(lines):
             idx = start_idx + offset
             if idx >= 28:
                 break
             parts = [p.strip() for p in line.split('\t')]
 
-            if len(parts) > 1:
-                if col_idx == 0 and len(parts) >= 5 and re.match(r'^\d+$', parts[0]):
+            # Если вставляем начиная со столбца ФИО (col_idx == 0) и в первой колонке передан номер строки, отсекаем его
+            if col_idx == 0:
+                if len(parts) >= 2 and re.match(r'^\d+[\.\)]?$', parts[0]):
                     parts = parts[1:]
 
+            if len(parts) > 1:
                 for c_offset, val in enumerate(parts):
                     target_c = col_idx + c_offset
                     if target_c < num_cols:
@@ -9230,15 +9725,16 @@ class JournalCoverApp(tk.Tk):
                         else:
                             var_list[idx][target_c].set(val)
             else:
+                val = parts[0]
                 if col_idx == 0:
-                    clean_val = re.sub(r'^\d+[\.\)\s\-]+\s*', '', line)
-                    var_list[idx][0].set(clean_val or line)
+                    clean_val = re.sub(r'^\d+[\.\)\s\-]+\s*', '', val)
+                    var_list[idx][0].set(clean_val or val)
                 elif col_idx < num_cols:
-                    var_list[idx][col_idx].set(line)
+                    var_list[idx][col_idx].set(val)
+
+            count += 1
 
         # Синхронизируем объединённые ячейки содержания и подписи, если они присутствуют
-        w_cnt = self.safety_p1_content_widget if page_num == 1 else self.safety_p2_content_widget
-        w_sig = self.safety_p1_sig_widget if page_num == 1 else self.safety_p2_sig_widget
         if w_cnt and w_cnt.winfo_exists():
             for r in var_list:
                 if r[2].get().strip():
@@ -9254,8 +9750,168 @@ class JournalCoverApp(tk.Tk):
                     break
 
         self.schedule_auto_save_safety_briefing()
-        self.status_var.set(f"Вставлено {len(lines)} строк на страницу {page_num} инструктажа по ТБ.")
+        if snapshot:
+            self.push_undo_action(
+                desc=f"вставка {count} строк в инструктаж по ТБ (стр. {page_num})",
+                restore=snapshot,
+                text_restore=text_snap,
+                post_action=lambda p=page_num: (self.auto_save_safety_briefing_data(), self._sync_safety_text_from_vars(p))
+            )
+        self.status_var.set(f"Вставлено {count} строк на страницу {page_num} инструктажа по ТБ.")
         return "break"
+
+    def attach_safety_briefing_context_menu(self, widget, idx: int, page_num: int, col_idx: int = 0):
+        """Контекстное меню для ячеек таблицы инструктажа по ТБ с быстрой вставкой строк/списка."""
+        menu = tk.Menu(widget, tearoff=0, font=(self.font_sans, 9))
+        menu.add_command(label="↩ Отменить (Ctrl+Z)", command=lambda: self.undo_in_widget(widget))
+        menu.add_separator()
+        menu.add_command(
+            label="📋 Вставить строки из буфера (Ctrl+V)",
+            command=lambda: self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=idx, col_idx=col_idx)
+        )
+        if col_idx == 0:
+            menu.add_command(
+                label="👥 Заполнить ФИО из списка обучающихся",
+                command=lambda: self.fill_safety_students_from_list(page_num)
+            )
+        elif col_idx == 1:
+            menu.add_command(
+                label="📅 Проставить дату всем",
+                command=lambda: self.fill_safety_date_for_all(page_num)
+            )
+        menu.add_separator()
+        menu.add_command(label="Копировать (Ctrl+C)", command=lambda: self.copy_from_widget(widget))
+        menu.add_command(label="Вырезать (Ctrl+X)", command=lambda: self.cut_from_widget(widget))
+        menu.add_command(label="Выделить всё (Ctrl+A)", command=lambda: self.select_all_widget(widget))
+        menu.add_command(label="Очистить поле", command=lambda: self.clear_widget_content(widget))
+
+        def show_menu(event):
+            try:
+                menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                menu.grab_release()
+
+        widget.bind("<Button-3>", show_menu)
+        widget.bind("<Button-2>", show_menu)
+
+    def on_safety_briefing_container_keypress(self, event, page_num: int):
+        """Обработка сочетаний клавиш на контейнерах вкладки инструктажа по ТБ (RU / EN)."""
+        action = self.get_shortcut_action(event)
+        if not action:
+            return None
+        if action == "paste":
+            return self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=0, col_idx=0, event=event)
+        elif action == "undo":
+            self.perform_undo()
+            return "break"
+        elif action == "save":
+            self.save_all_pending_data()
+            self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
+            return "break"
+        return None
+
+    def _sync_safety_text_from_vars(self, page_num: int):
+        """Синхронизирует значения из var_list в Text виджеты содержания и подписи (после Undo или загрузки)."""
+        try:
+            var_list = self.safety_briefing_p1_vars if page_num == 1 else self.safety_briefing_p2_vars
+            w_cnt = self.safety_p1_content_widget if page_num == 1 else self.safety_p2_content_widget
+            w_sig = self.safety_p1_sig_widget if page_num == 1 else self.safety_p2_sig_widget
+            cnt_val = ""
+            sig_val = ""
+            for r in var_list:
+                if not cnt_val and r[2].get().strip():
+                    cnt_val = r[2].get().strip()
+                if not sig_val and r[3].get().strip():
+                    sig_val = r[3].get().strip()
+            if w_cnt and w_cnt.winfo_exists():
+                w_cnt.delete("1.0", tk.END)
+                if cnt_val:
+                    w_cnt.insert("1.0", cnt_val)
+            if w_sig and w_sig.winfo_exists():
+                w_sig.delete("1.0", tk.END)
+                if sig_val:
+                    w_sig.insert("1.0", sig_val)
+                    w_sig.tag_add("center", "1.0", "end")
+        except Exception:
+            pass
+
+    def on_safety_briefing_entry_keypress(self, event, idx: int, page_num: int, col_idx: int = 0):
+        """Обработка сочетаний клавиш в ячейках таблицы инструктажа по ТБ (RU / EN)."""
+        action = self.get_shortcut_action(event)
+        if not action:
+            return None
+
+        if action == "paste":
+            self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=idx, col_idx=col_idx, event=event)
+            return "break"
+        elif action == "copy":
+            self.copy_from_widget(event.widget)
+            return "break"
+        elif action == "cut":
+            self.cut_from_widget(event.widget)
+            return "break"
+        elif action == "select_all":
+            self.select_all_widget(event.widget)
+            return "break"
+        elif action == "undo":
+            self.undo_in_widget(event.widget)
+            return "break"
+        elif action == "save":
+            self.save_all_pending_data()
+            self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
+            return "break"
+
+        return None
+
+    def on_safety_briefing_entry_paste(self, event, idx: int, page_num: int, col_idx: int = 0):
+        """Перехват события <<Paste>> для ячеек таблицы инструктажа по ТБ."""
+        self.paste_safety_briefing_from_clipboard(page_num=page_num, start_idx=idx, col_idx=col_idx, event=event)
+        return "break"
+
+    def on_safety_text_keypress(self, event, widget, change_callback=None):
+        """Обработка сочетаний клавиш в объединённых текстовых полях инструктажа по ТБ (RU / EN)."""
+        action = self.get_shortcut_action(event)
+        if not action:
+            return None
+
+        if action == "paste":
+            self.paste_to_widget(widget)
+            if change_callback:
+                change_callback()
+            return "break"
+        elif action == "copy":
+            self.copy_from_widget(widget)
+            return "break"
+        elif action == "cut":
+            self.cut_from_widget(widget)
+            if change_callback:
+                change_callback()
+            return "break"
+        elif action == "select_all":
+            self.select_all_widget(widget)
+            return "break"
+        elif action == "undo":
+            self.undo_in_widget(widget)
+            if change_callback:
+                change_callback()
+            return "break"
+        elif action == "save":
+            self.save_all_pending_data()
+            self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
+            return "break"
+
+        return None
+
+    def _sync_safety_text_to_vars(self, page_num: int, col_idx: int, widget):
+        """Синхронизирует текст из объединенного Text виджета во все 28 строк var_list и планирует автосохранение."""
+        try:
+            val = widget.get("1.0", "end-1c").strip()
+            var_list = self.safety_briefing_p1_vars if page_num == 1 else self.safety_briefing_p2_vars
+            for r in var_list:
+                r[col_idx].set(val)
+            self.schedule_auto_save_safety_briefing()
+        except Exception:
+            pass
 
     def schedule_auto_save_safety_briefing(self):
         """Отложенное сохранение данных инструктажа по ТБ (debounced на 500 мс)."""
@@ -9623,28 +10279,24 @@ class JournalCoverApp(tk.Tk):
             e_per = ttk.Entry(h_table_frame, textvariable=r_data["period"], font=(self.font_sans, 9, "bold"), width=14, justify="center")
             e_per.grid(row=2 + r_idx, column=0, sticky="nsew", padx=1, pady=1)
             self.attach_context_menu(e_per)
-            e_per.bind("<KeyPress>", self.handle_entry_shortcuts, add="+")
             row_widgets.append(e_per)
 
             # 2. Всего (Col 1)
             e_tot = ttk.Entry(h_table_frame, textvariable=r_data["total"], font=(self.font_sans, 9, "bold"), width=7, justify="center")
             e_tot.grid(row=2 + r_idx, column=1, sticky="nsew", padx=1, pady=1)
             self.attach_context_menu(e_tot)
-            e_tot.bind("<KeyPress>", self.handle_entry_shortcuts, add="+")
             row_widgets.append(e_tot)
 
             # 3. Мальчиков (Col 2)
             e_boy = ttk.Entry(h_table_frame, textvariable=r_data["boys"], font=(self.font_sans, 9), width=6, justify="center")
             e_boy.grid(row=2 + r_idx, column=2, sticky="nsew", padx=1, pady=1)
             self.attach_context_menu(e_boy)
-            e_boy.bind("<KeyPress>", self.handle_entry_shortcuts, add="+")
             row_widgets.append(e_boy)
 
             # 4. Девочек (Col 3)
             e_grl = ttk.Entry(h_table_frame, textvariable=r_data["girls"], font=(self.font_sans, 9), width=6, justify="center")
             e_grl.grid(row=2 + r_idx, column=3, sticky="nsew", padx=1, pady=1)
             self.attach_context_menu(e_grl)
-            e_grl.bind("<KeyPress>", self.handle_entry_shortcuts, add="+")
             row_widgets.append(e_grl)
 
             # 5..15. Классы (Col 4..14)
@@ -9652,7 +10304,6 @@ class JournalCoverApp(tk.Tk):
                 e_cl = ttk.Entry(h_table_frame, textvariable=r_data["classes"][c_i], font=(self.font_sans, 9), width=3, justify="center")
                 e_cl.grid(row=2 + r_idx, column=4 + c_i, sticky="nsew", padx=1, pady=1)
                 self.attach_context_menu(e_cl)
-                e_cl.bind("<KeyPress>", self.handle_entry_shortcuts, add="+")
                 row_widgets.append(e_cl)
 
             # 16..18. Сколько лет (Col 15..17)
@@ -9660,13 +10311,14 @@ class JournalCoverApp(tk.Tk):
                 e_yr = ttk.Entry(h_table_frame, textvariable=r_data["years"][y_i], font=(self.font_sans, 9), width=3 if y_i < 2 else 5, justify="center")
                 e_yr.grid(row=2 + r_idx, column=15 + y_i, sticky="nsew", padx=1, pady=1)
                 self.attach_context_menu(e_yr)
-                e_yr.bind("<KeyPress>", self.handle_entry_shortcuts, add="+")
                 row_widgets.append(e_yr)
 
-            # Привязка горячих клавиш вставки
+            # Привязка горячих клавиш (копирование, вставка таблицы, вырезание, выделение, сохранение для RU и EN)
             for col_idx, w in enumerate(row_widgets):
-                w.bind("<Control-v>", lambda ev, r=r_idx, c=col_idx: self.paste_annual_report_from_clipboard(r, c, ev))
-                w.bind("<Control-V>", lambda ev, r=r_idx, c=col_idx: self.paste_annual_report_from_clipboard(r, c, ev))
+                w.bind("<KeyPress>", lambda ev, r=r_idx, c=col_idx: self.on_annual_report_entry_keypress(ev, r, c), add="+")
+                w.bind("<<Paste>>", lambda ev, r=r_idx, c=col_idx: self.paste_annual_report_from_clipboard(r, c, ev))
+                for seq in ("<Control-v>", "<Control-V>", "<Command-v>", "<Command-V>", "<Shift-Insert>"):
+                    w.bind(seq, lambda ev, r=r_idx, c=col_idx: self.paste_annual_report_from_clipboard(r, c, ev))
 
             self.annual_report_widgets.append(row_widgets)
 
@@ -9881,6 +10533,11 @@ class JournalCoverApp(tk.Tk):
 
         # Заполняем строки отчёта:
         # Для строк 0 (I полугодие), 1 (II полугодие), 2 (За год)
+        snapshot = []
+        for r_idx in range(3):
+            for v in self.annual_report_vars[r_idx]["all_vars"]:
+                snapshot.append((v, v.get()))
+
         for r_idx in range(3):
             r = self.annual_report_vars[r_idx]
             r["total"].set(str(total_cnt))
@@ -9896,6 +10553,12 @@ class JournalCoverApp(tk.Tk):
                 r["years"][y_i].set(str(cnt_y) if cnt_y > 0 else "")
 
         self.schedule_auto_save_annual_report()
+        if snapshot:
+            self.push_undo_action(
+                desc="расчёт показателей годового отчёта",
+                restore=snapshot,
+                post_action=self.auto_save_annual_report_data
+            )
         self.status_var.set(f"Годовой цифровой отчёт рассчитан: всего {total_cnt} чел. (мальчиков: {boys_cnt}, девочек: {girls_cnt}).")
         messagebox.showinfo(
             "Расчёт выполнен!",
@@ -9911,7 +10574,10 @@ class JournalCoverApp(tk.Tk):
         """Очищает данные полей таблицы Годового цифрового отчёта."""
         if not messagebox.askyesno("Очистить таблицу", "Вы действительно хотите очистить все числовые поля Годового цифрового отчёта?"):
             return
+        snapshot = []
         for r in self.annual_report_vars:
+            for v in r["all_vars"]:
+                snapshot.append((v, v.get()))
             r["total"].set("")
             r["boys"].set("")
             r["girls"].set("")
@@ -9920,6 +10586,12 @@ class JournalCoverApp(tk.Tk):
             for yv in r["years"]:
                 yv.set("")
         self.auto_save_annual_report_data()
+        if snapshot:
+            self.push_undo_action(
+                desc="очистка таблицы годового отчёта",
+                restore=snapshot,
+                post_action=self.auto_save_annual_report_data
+            )
         self.status_var.set("Таблица Годового цифрового отчёта очищена.")
 
     def paste_annual_report_from_clipboard(self, start_row_idx: int = 0, col_idx: int = 0, event=None):
@@ -9934,6 +10606,19 @@ class JournalCoverApp(tk.Tk):
             self.status_var.set("В буфере обмена нет строк для вставки.")
             return "break"
 
+        # Снимок значений для отмены (Undo / Ctrl+Z)
+        snapshot = []
+        for offset, line in enumerate(lines):
+            r_i = start_row_idx + offset
+            if r_i >= 3:
+                break
+            parts = [p.strip() for p in line.split('\t')]
+            row_vars = self.annual_report_vars[r_i]["all_vars"]
+            for c_offset, val in enumerate(parts):
+                target_col = col_idx + c_offset
+                if target_col < len(row_vars):
+                    snapshot.append((row_vars[target_col], row_vars[target_col].get()))
+
         for offset, line in enumerate(lines):
             r_i = start_row_idx + offset
             if r_i >= 3:
@@ -9946,8 +10631,42 @@ class JournalCoverApp(tk.Tk):
                     row_vars[target_col].set(val)
 
         self.schedule_auto_save_annual_report()
+        if snapshot:
+            self.push_undo_action(
+                desc=f"вставка в годовой цифровой отчёт ({len(lines)} строк)",
+                restore=snapshot,
+                post_action=self.auto_save_annual_report_data
+            )
         self.status_var.set(f"Вставлено {len(lines)} строк в Годовой цифровой отчёт.")
         return "break"
+
+    def on_annual_report_entry_keypress(self, event, row_idx: int, col_idx: int):
+        """Обработка сочетаний клавиш в ячейках таблицы годового отчёта (RU / EN)."""
+        action = self.get_shortcut_action(event)
+        if not action:
+            return None
+
+        if action == "paste":
+            self.paste_annual_report_from_clipboard(start_row_idx=row_idx, col_idx=col_idx, event=event)
+            return "break"
+        elif action == "copy":
+            self.copy_from_widget(event.widget)
+            return "break"
+        elif action == "cut":
+            self.cut_from_widget(event.widget)
+            return "break"
+        elif action == "select_all":
+            self.select_all_widget(event.widget)
+            return "break"
+        elif action == "undo":
+            self.undo_in_widget(event.widget)
+            return "break"
+        elif action == "save":
+            self.save_all_pending_data()
+            self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
+            return "break"
+
+        return None
 
     def schedule_auto_save_annual_report(self):
         """Отложенное сохранение данных Годового отчёта (debounced 500 мс)."""
@@ -10721,6 +11440,8 @@ class JournalCoverApp(tk.Tk):
     def attach_student_context_menu(self, widget, idx: int, month_key: str = "september"):
         """Контекстное меню для поля ввода обучающегося с пунктом быстрой вставки списка."""
         menu = tk.Menu(widget, tearoff=0)
+        menu.add_command(label="↩ Отменить (Ctrl+Z)", command=lambda: self.undo_in_widget(widget))
+        menu.add_separator()
         menu.add_command(label="📋 Вставить список детей (Ctrl+V)", command=lambda: self.paste_students_from_clipboard(idx, month_key=month_key))
         menu.add_separator()
         menu.add_command(label="Вырезать", command=lambda: widget.event_generate("<<Cut>>"))
@@ -10737,6 +11458,8 @@ class JournalCoverApp(tk.Tk):
     def attach_topic_context_menu(self, widget, idx: int, month_key: str = "september"):
         """Контекстное меню для поля ввода темы ДОП с пунктом вставки списка тем."""
         menu = tk.Menu(widget, tearoff=0)
+        menu.add_command(label="↩ Отменить (Ctrl+Z)", command=lambda: self.undo_in_widget(widget))
+        menu.add_separator()
         menu.add_command(label="📋 Вставить список тем (Ctrl+V)", command=lambda: self.paste_topics_from_clipboard(idx, month_key=month_key))
         menu.add_separator()
         menu.add_command(label="Вырезать", command=lambda: widget.event_generate("<<Cut>>"))
@@ -11380,48 +12103,32 @@ class JournalCoverApp(tk.Tk):
 
     def is_paste_event(self, event):
         """Определяет, нажато ли сочетание вставки (Ctrl+V / Cmd+V / Shift+Insert) на любой раскладке клавиатуры (RU / EN)."""
-        state = getattr(event, 'state', 0)
-        code = getattr(event, 'keycode', 0)
-        key = (getattr(event, 'keysym', '') or "").lower()
-
-        # Shift + Insert
-        if (state & 0x1) and (code == 45 or key == 'insert'):
-            return True
-
-        if not self.is_ctrl_pressed(event):
-            return False
-
-        char = getattr(event, 'char', '')
-
-        if code in (86, 54):
-            return True
-        if key in ('v', 'cyrillic_em', 'cyrillic_m'):
-            return True
-        if char == '\x16':
-            return True
-
-        return False
+        return self.get_shortcut_action(event) == "paste"
 
     def on_student_entry_keypress(self, event, idx: int, month_key: str = "september"):
-        """Обработка нажатий клавиш в строке обучающегося (Ctrl+V, Ctrl+A, Ctrl+C, Ctrl+X)."""
-        if self.is_paste_event(event):
-            self.paste_students_from_clipboard(start_idx=idx, event=event, month_key=month_key)
-            return "break"
-
-        if not self.is_ctrl_pressed(event):
+        """Обработка нажатий клавиш в строке обучающегося (Ctrl+V, Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+Z, Ctrl+S)."""
+        action = self.get_shortcut_action(event)
+        if not action:
             return None
 
-        code = getattr(event, 'keycode', 0)
-        key = (getattr(event, 'keysym', '') or "").lower()
-
-        if key in ('a', 'cyrillic_ef') or code == 65:
-            self.select_all_widget(event.widget)
+        if action == "paste":
+            self.paste_students_from_clipboard(start_idx=idx, event=event, month_key=month_key)
             return "break"
-        elif key in ('c', 'cyrillic_es') or code == 67:
+        elif action == "copy":
             self.copy_from_widget(event.widget)
             return "break"
-        elif key in ('x', 'cyrillic_che') or code == 88:
+        elif action == "cut":
             self.cut_from_widget(event.widget)
+            return "break"
+        elif action == "select_all":
+            self.select_all_widget(event.widget)
+            return "break"
+        elif action == "undo":
+            self.undo_in_widget(event.widget)
+            return "break"
+        elif action == "save":
+            self.save_all_pending_data()
+            self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
             return "break"
 
         return None
@@ -11432,25 +12139,29 @@ class JournalCoverApp(tk.Tk):
         return "break"
 
     def on_topic_entry_keypress(self, event, idx: int, month_key: str = "september"):
-        """Обработка нажатий клавиш в строке темы ДОП (Ctrl+V, Ctrl+A, Ctrl+C, Ctrl+X)."""
-        if self.is_paste_event(event):
-            self.paste_topics_from_clipboard(start_idx=idx, event=event, month_key=month_key)
-            return "break"
-
-        if not self.is_ctrl_pressed(event):
+        """Обработка нажатий клавиш в строке темы ДОП (Ctrl+V, Ctrl+A, Ctrl+C, Ctrl+X, Ctrl+Z, Ctrl+S)."""
+        action = self.get_shortcut_action(event)
+        if not action:
             return None
 
-        code = getattr(event, 'keycode', 0)
-        key = (getattr(event, 'keysym', '') or "").lower()
-
-        if key in ('a', 'cyrillic_ef') or code == 65:
-            self.select_all_widget(event.widget)
+        if action == "paste":
+            self.paste_topics_from_clipboard(start_idx=idx, event=event, month_key=month_key)
             return "break"
-        elif key in ('c', 'cyrillic_es') or code == 67:
+        elif action == "copy":
             self.copy_from_widget(event.widget)
             return "break"
-        elif key in ('x', 'cyrillic_che') or code == 88:
+        elif action == "cut":
             self.cut_from_widget(event.widget)
+            return "break"
+        elif action == "select_all":
+            self.select_all_widget(event.widget)
+            return "break"
+        elif action == "undo":
+            self.undo_in_widget(event.widget)
+            return "break"
+        elif action == "save":
+            self.save_all_pending_data()
+            self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
             return "break"
 
         return None
@@ -11461,17 +12172,67 @@ class JournalCoverApp(tk.Tk):
         return "break"
 
     def on_global_keypress(self, event):
-        """Глобальный перехватчик клавиш окна для вставки Ctrl+V на любой раскладке клавиатуры."""
-        if not self.is_ctrl_pressed(event):
+        """Глобальный перехватчик клавиш окна для всех сочетаний клавиш на любой раскладке клавиатуры (RU / EN)."""
+        action = self.get_shortcut_action(event)
+        if not action:
             return None
-        if self.is_paste_event(event):
+
+        # 1. Сохранение (Ctrl+S / Cmd+S)
+        if action == "save":
+            self.save_all_pending_data()
+            self.status_var.set("Все данные успешно сохранены в config.json (Ctrl+S)")
+            return "break"
+
+        # 2. Переключение вкладок (Ctrl+0..9 / Cmd+0..9)
+        if action.startswith("tab_"):
+            try:
+                t_idx = int(action.split("_")[1])
+                self.on_shortcut_tab_select(t_idx, event)
+                return "break"
+            except Exception:
+                pass
+
+        # 3. Вставка (Ctrl+V / Cmd+V / Shift+Insert)
+        if action == "paste":
             res = self.on_global_paste_shortcut(event)
             if res == "break":
                 return "break"
+            focused = self.focus_get()
+            if focused and isinstance(focused, (tk.Entry, ttk.Entry, tk.Text, ttk.Combobox, ttk.Spinbox)):
+                self.paste_to_widget(focused)
+                return "break"
+
+        # 4. Копирование (Ctrl+C / Cmd+C)
+        elif action == "copy":
+            focused = self.focus_get()
+            if focused:
+                self.copy_from_widget(focused)
+                return "break"
+
+        # 5. Вырезание (Ctrl+X / Cmd+X)
+        elif action == "cut":
+            focused = self.focus_get()
+            if focused:
+                self.cut_from_widget(focused)
+                return "break"
+
+        # 6. Выделить всё (Ctrl+A / Cmd+A)
+        elif action == "select_all":
+            focused = self.focus_get()
+            if focused:
+                self.select_all_widget(focused)
+                return "break"
+
+        # 7. Отменить (Ctrl+Z / Cmd+Z)
+        elif action == "undo":
+            focused = self.focus_get()
+            self.perform_undo(focused)
+            return "break"
+
         return None
 
     def on_global_paste_shortcut(self, event=None, month_key: str = None):
-        """Глобальный перехватчик сочетания Ctrl+V для активной вкладки месяца."""
+        """Глобальный перехватчик сочетания Ctrl+V для активной вкладки (RU / EN)."""
         if month_key is None:
             try:
                 cur_tab = self.notebook.index(self.notebook.select())
@@ -11508,7 +12269,67 @@ class JournalCoverApp(tk.Tk):
                         cur_page = 1
                     return self.paste_students_list_from_clipboard(page_num=cur_page, start_idx=0, col_idx=0, event=event)
                 return None
+            elif cur_tab == 19:
+                # Вкладка 19: Инструктаж по ТБ (2 страницы)
+                cur_page = 1
+                if hasattr(self, 'safety_briefing_notebook') and self.safety_briefing_notebook:
+                    try:
+                        cur_page = self.safety_briefing_notebook.index(self.safety_briefing_notebook.select()) + 1
+                    except Exception:
+                        cur_page = 1
+
+                focused = self.focus_get()
+                content_w = getattr(self, f"safety_p{cur_page}_content_widget", None)
+                sig_w = getattr(self, f"safety_p{cur_page}_sig_widget", None)
+
+                # Если фокус в большой ячейке содержания или подписи
+                if focused and focused == content_w:
+                    self.paste_to_widget(content_w)
+                    self._sync_safety_text_to_vars(cur_page, 2, content_w)
+                    return "break"
+                elif focused and focused == sig_w:
+                    self.paste_to_widget(sig_w)
+                    self._sync_safety_text_to_vars(cur_page, 3, sig_w)
+                    return "break"
+
+                # Если фокус в ячейках таблицы обучающихся или дат
+                widgets_list = getattr(self, f"safety_briefing_p{cur_page}_widgets", [])
+                start_r = 0
+                start_c = 0
+                found = False
+                for r_i, row in enumerate(widgets_list):
+                    for c_i, w in enumerate(row):
+                        if w == focused:
+                            start_r = r_i
+                            start_c = c_i
+                            found = True
+                            break
+                    if found:
+                        break
+
+                return self.paste_safety_briefing_from_clipboard(page_num=cur_page, start_idx=start_r, col_idx=start_c, event=event)
+            elif cur_tab == 20:
+                # Вкладка 20: Годовой цифровой отчёт
+                start_r = 0
+                start_c = 0
+                focused = self.focus_get()
+                if hasattr(self, 'annual_report_widgets'):
+                    found = False
+                    for r_i, row in enumerate(self.annual_report_widgets):
+                        for c_i, w in enumerate(row):
+                            if w == focused:
+                                start_r = r_i
+                                start_c = c_i
+                                found = True
+                                break
+                        if found:
+                            break
+                return self.paste_annual_report_from_clipboard(start_row_idx=start_r, col_idx=start_c, event=event)
             else:
+                focused = self.focus_get()
+                if focused and isinstance(focused, (tk.Entry, ttk.Entry, tk.Text, ttk.Combobox, ttk.Spinbox)):
+                    self.paste_to_widget(focused)
+                    return "break"
                 return None
 
         if not hasattr(self, 'months_data') or month_key not in self.months_data:
@@ -11575,6 +12396,14 @@ class JournalCoverApp(tk.Tk):
         if not m_data:
             return "break"
 
+        # Снимок для отмены действия (Undo / Ctrl+Z)
+        snapshot = []
+        for offset in range(len(cleaned_names)):
+            idx = start_idx + offset
+            if idx < 30:
+                v = m_data["student_vars"][idx]
+                snapshot.append((v, v.get()))
+
         count = 0
         for offset, name in enumerate(cleaned_names):
             idx = start_idx + offset
@@ -11584,6 +12413,15 @@ class JournalCoverApp(tk.Tk):
 
         self.auto_save_month_data(month_key)
         m_name = m_data["config"]["name"]
+        if snapshot:
+            st_w = m_data.get("student_widgets", [])
+            fw = st_w[start_idx] if start_idx < len(st_w) else None
+            self.push_undo_action(
+                desc=f"вставка списка обучающихся ({count} чел., {m_name})",
+                restore=snapshot,
+                post_action=lambda mk=month_key: self.auto_save_month_data(mk),
+                focus_widget=fw
+            )
         self.status_var.set(f"Вставлено {count} обучающихся из буфера обмена ({m_name}, со строки {start_idx + 1}).")
         return "break"
 
@@ -11602,6 +12440,14 @@ class JournalCoverApp(tk.Tk):
         m_data = self.months_data.get(month_key, self.months_data.get("september"))
         if not m_data:
             return "break"
+
+        # Снимок для отмены действия (Undo / Ctrl+Z)
+        snapshot = []
+        for offset in range(len(lines)):
+            idx = start_idx + offset
+            if idx < 16:
+                for v in m_data["topic_row_vars"][idx]:
+                    snapshot.append((v, v.get()))
 
         count = 0
         for offset, line in enumerate(lines):
@@ -11622,6 +12468,12 @@ class JournalCoverApp(tk.Tk):
 
         self.auto_save_month_data(month_key)
         m_name = m_data["config"]["name"]
+        if snapshot:
+            self.push_undo_action(
+                desc=f"вставка тем занятий ({count} строк, {m_name})",
+                restore=snapshot,
+                post_action=lambda mk=month_key: self.auto_save_month_data(mk)
+            )
         self.status_var.set(f"Вставлено {count} тем занятий из буфера обмена ({m_name}, со строки {start_idx + 1}).")
         return "break"
 
@@ -11634,11 +12486,17 @@ class JournalCoverApp(tk.Tk):
         if not non_empty:
             messagebox.showinfo("Список пуст", f"В месяце «{self.months_data[source_month_key]['config']['name']}» нет заполненных имен детей.")
             return
+        tgt_snapshot = [(v, v.get()) for v in self.months_data[target_month_key]["student_vars"]]
         for i in range(30):
             self.months_data[target_month_key]["student_vars"][i].set(src_names[i])
         self.auto_save_month_data(target_month_key)
         tgt_name = self.months_data[target_month_key]["config"]["name"]
         src_name = self.months_data[source_month_key]["config"]["name"]
+        self.push_undo_action(
+            desc=f"копирование обучающихся из «{src_name}» в «{tgt_name}»",
+            restore=tgt_snapshot,
+            post_action=lambda tk=target_month_key: self.auto_save_month_data(tk)
+        )
         self.status_var.set(f"Скопировано {len(non_empty)} обучающихся из «{src_name}» в «{tgt_name}».")
 
     def clear_month_students(self, month_key: str):
@@ -11648,9 +12506,15 @@ class JournalCoverApp(tk.Tk):
         m_name = self.months_data[month_key]["config"]["name"]
         if not messagebox.askyesno("Подтверждение", f"Очистить список всех 30 обучающихся ({m_name}, страница 1)?"):
             return
+        snapshot = [(v, v.get()) for v in self.months_data[month_key]["student_vars"]]
         for v in self.months_data[month_key]["student_vars"]:
             v.set("")
         self.auto_save_month_data(month_key)
+        self.push_undo_action(
+            desc=f"очистка списка обучающихся ({m_name})",
+            restore=snapshot,
+            post_action=lambda mk=month_key: self.auto_save_month_data(mk)
+        )
         self.status_var.set(f"Список обучающихся ({m_name}) очищен.")
 
     def clear_september_students(self):
