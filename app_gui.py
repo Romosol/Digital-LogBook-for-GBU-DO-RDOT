@@ -23,6 +23,7 @@ import os
 import sys
 import re
 import json
+import atexit
 import platform
 import subprocess
 import threading
@@ -133,6 +134,333 @@ def setup_high_dpi():
 
 
 setup_high_dpi()
+
+# Файл блокировки для запрета одновременного запуска нескольких копий приложения из одной папки
+LOCK_FILE = os.path.join(APP_DIR, ".app_instance.lock")
+
+
+class SingleInstanceLock:
+    """
+    Обеспечивает запуск только одной копии приложения из рабочей папки (APP_DIR).
+    Предотвращает одновременный запуск нескольких экземпляров и перезапись config.json
+    последним закрытым окном.
+    Использует блокировку на уровне ядра ОС (msvcrt на Windows, fcntl на Unix) с авто-освобождением
+    при завершении или падении процесса.
+    """
+    def __init__(self, lock_file_path: str = LOCK_FILE):
+        self.lock_file_path = os.path.abspath(lock_file_path)
+        self.lock_file = None
+        self.is_locked = False
+
+    def acquire(self) -> bool:
+        """
+        Пытается получить эксклюзивную блокировку файла приложения.
+        Возвращает True, если экземпляр единственный.
+        Возвращает False, если в этой папке уже работает другой экземпляр приложения.
+        """
+        try:
+            lock_dir = os.path.dirname(self.lock_file_path)
+            if lock_dir:
+                os.makedirs(lock_dir, exist_ok=True)
+            sys_os = platform.system()
+
+            if sys_os == "Windows":
+                import msvcrt
+                # Открываем файл на чтение и запись в бинарном режиме
+                self.lock_file = open(self.lock_file_path, "a+b")
+                self.lock_file.seek(0)
+                try:
+                    # Блокируем первый байт файла без ожидания
+                    msvcrt.locking(self.lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    self.is_locked = True
+                except (IOError, OSError):
+                    try:
+                        self.lock_file.close()
+                    except Exception:
+                        pass
+                    self.lock_file = None
+                    return False
+            else:
+                import fcntl
+                self.lock_file = open(self.lock_file_path, "a+")
+                try:
+                    # Эксклюзивная неблокирующая блокировка
+                    fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self.is_locked = True
+                except (IOError, OSError, BlockingIOError):
+                    try:
+                        self.lock_file.close()
+                    except Exception:
+                        pass
+                    self.lock_file = None
+                    return False
+
+            # Записываем информацию о текущем процессе
+            try:
+                self.lock_file.seek(0)
+                self.lock_file.truncate()
+                info = f"pid={os.getpid()}\npath={self.lock_file_path}\n"
+                if hasattr(self.lock_file, 'mode') and 'b' in str(self.lock_file.mode):
+                    self.lock_file.write(info.encode('utf-8'))
+                else:
+                    self.lock_file.write(info)
+                self.lock_file.flush()
+            except Exception:
+                pass
+
+            atexit.register(self.release)
+            return True
+
+        except Exception:
+            return self._fallback_pid_acquire()
+
+    def _fallback_pid_acquire(self) -> bool:
+        """Резервная проверка существования процесса по PID."""
+        try:
+            if os.path.exists(self.lock_file_path):
+                try:
+                    with open(self.lock_file_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    m = re.search(r'pid=(\d+)', content)
+                    if m:
+                        old_pid = int(m.group(1))
+                        if old_pid != os.getpid() and self._is_pid_alive(old_pid):
+                            return False
+                except Exception:
+                    pass
+            with open(self.lock_file_path, "w", encoding="utf-8") as f:
+                f.write(f"pid={os.getpid()}\npath={self.lock_file_path}\n")
+            self.is_locked = True
+            atexit.register(self.release)
+            return True
+        except Exception:
+            return True
+
+    @staticmethod
+    def _is_pid_alive(pid: int) -> bool:
+        if pid <= 0:
+            return False
+        sys_os = platform.system()
+        if sys_os == "Windows":
+            try:
+                import ctypes
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                SYNCHRONIZE = 0x00100000
+                handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, False, pid)
+                if handle:
+                    ctypes.windll.kernel32.CloseHandle(handle)
+                    return True
+                return False
+            except Exception:
+                return False
+        else:
+            try:
+                os.kill(pid, 0)
+                return True
+            except OSError:
+                return False
+
+    def release(self):
+        """Освобождает системную блокировку и удаляет временный lock-файл."""
+        if not self.is_locked:
+            return
+        self.is_locked = False
+        try:
+            if self.lock_file:
+                sys_os = platform.system()
+                if sys_os == "Windows":
+                    import msvcrt
+                    try:
+                        self.lock_file.seek(0)
+                        msvcrt.locking(self.lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                    except Exception:
+                        pass
+                else:
+                    import fcntl
+                    try:
+                        fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
+                    except Exception:
+                        pass
+                try:
+                    self.lock_file.close()
+                except Exception:
+                    pass
+                self.lock_file = None
+        except Exception:
+            pass
+
+        try:
+            if os.path.exists(self.lock_file_path):
+                os.remove(self.lock_file_path)
+        except Exception:
+            pass
+
+
+def check_single_instance(lock_file_path: str = None) -> SingleInstanceLock:
+    """
+    Проверяет, не запущена ли уже копия программы из текущей папки.
+    Если копия уже запущена, выводит предупреждающее окно и завершает новый процесс,
+    чтобы защитить config.json от перезаписи и потери данных.
+    """
+    if not lock_file_path:
+        lock_file_path = LOCK_FILE
+
+    lock = SingleInstanceLock(lock_file_path)
+    if not lock.acquire():
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showwarning(
+                "Приложение уже запущено",
+                "Обнаружен уже работающий экземпляр программы в этой папке!\n\n"
+                "Запуск нескольких копий одновременно запрещён, чтобы исключить перезапись "
+                "и потерю данных в файле config.json.\n\n"
+                "Пожалуйста, переключитесь на уже открытое окно приложения.",
+                parent=root
+            )
+            root.destroy()
+        except Exception:
+            print("Внимание: Запуск нескольких копий приложения из одной папки запрещён (защита config.json).")
+        sys.exit(0)
+    return lock
+
+
+class SplashScreen(tk.Toplevel):
+    """
+    Окно-заставка (Splash Screen), информирующее о процессе загрузки
+    приложения и предотвращающее повторные клики пользователя при старте.
+    """
+    def __init__(self, parent, font_sans: str = "Segoe UI"):
+        super().__init__(parent)
+        self.parent = parent
+        self.font_sans = font_sans
+
+        # Убираем рамки операционной системы и держим поверх всех окон
+        self.overrideredirect(True)
+        try:
+            self.attributes("-topmost", True)
+        except Exception:
+            pass
+
+        self.width = 540
+        self.height = 240
+        self.center_splash()
+
+        # Внешний контейнер с тонкой контрастной рамкой
+        card = tk.Frame(self, bg="#ffffff", bd=1, relief=tk.SOLID, highlightbackground="#2563eb", highlightthickness=1)
+        card.pack(fill=tk.BOTH, expand=True)
+
+        # Верхняя плашка шапки
+        header = tk.Frame(card, bg="#0f172a", padx=16, pady=10)
+        header.pack(fill=tk.X)
+
+        title_lbl = tk.Label(
+            header,
+            text="📘 Журнал учёта работы педагога",
+            font=(self.font_sans, 10, "bold"),
+            fg="#ffffff",
+            bg="#0f172a"
+        )
+        title_lbl.pack(side=tk.LEFT)
+
+        ver_lbl = tk.Label(
+            header,
+            text=f"v{APP_VERSION}",
+            font=(self.font_sans, 8, "bold"),
+            fg="#93c5fd",
+            bg="#1e293b",
+            padx=6,
+            pady=2
+        )
+        ver_lbl.pack(side=tk.RIGHT)
+
+        # Основное тело заставки
+        body = tk.Frame(card, bg="#ffffff", padx=24, pady=16)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        self.lbl_main = tk.Label(
+            body,
+            text="Загрузка приложения...",
+            font=(self.font_sans, 13, "bold"),
+            fg="#0f172a",
+            bg="#ffffff",
+            anchor="w",
+            justify=tk.LEFT
+        )
+        self.lbl_main.pack(fill=tk.X, pady=(0, 4))
+
+        self.lbl_sub = tk.Label(
+            body,
+            text="Пожалуйста, подождите, идёт инициализация компонентов...",
+            font=(self.font_sans, 9),
+            fg="#475569",
+            bg="#ffffff",
+            anchor="w",
+            justify=tk.LEFT,
+            wraplength=480
+        )
+        self.lbl_sub.pack(fill=tk.X, pady=(0, 12))
+
+        # Анимированный бегущий индикатор прогресса
+        self.progress = ttk.Progressbar(body, mode="indeterminate", length=480)
+        self.progress.pack(fill=tk.X, pady=(0, 10))
+        try:
+            self.progress.start(10)
+        except Exception:
+            pass
+
+        # Статусная строка текущего этапа
+        self.lbl_status = tk.Label(
+            body,
+            text="Чтение сохранённых данных из config.json...",
+            font=(self.font_sans, 8, "italic"),
+            fg="#64748b",
+            bg="#ffffff",
+            anchor="w",
+            justify=tk.LEFT,
+            wraplength=480
+        )
+        self.lbl_status.pack(fill=tk.X)
+
+        # Принудительная немедленная отрисовка
+        try:
+            self.update_idletasks()
+            self.update()
+        except Exception:
+            pass
+
+    def center_splash(self):
+        """Центрирует окно заставки на экране."""
+        try:
+            self.update_idletasks()
+            sw = self.winfo_screenwidth()
+            sh = self.winfo_screenheight()
+            x = max(0, (sw - self.width) // 2)
+            y = max(0, (sh - self.height) // 2)
+            self.geometry(f"{self.width}x{self.height}+{x}+{y}")
+        except Exception:
+            pass
+
+    def set_status(self, text: str):
+        """Обновляет статус на окне заставки."""
+        try:
+            self.lbl_status.config(text=text)
+            self.update_idletasks()
+            self.update()
+        except Exception:
+            pass
+
+    def finish(self):
+        """Останавливает анимацию и закрывает окно заставки."""
+        try:
+            self.progress.stop()
+        except Exception:
+            pass
+        try:
+            self.destroy()
+        except Exception:
+            pass
+
 
 # Проверка openpyxl
 try:
@@ -3037,12 +3365,25 @@ def generate_excel_full_journal(
 class JournalCoverApp(tk.Tk):
     """Главное окно с вкладками (Ввод параметров / Формирование Excel) и выпадающим списком истории."""
 
-    def __init__(self):
+    def __init__(self, instance_lock=None, show_splash: bool = True):
         super().__init__()
-        self.title(f"Журнал учёта работы педагога — Обложка А4 (v{APP_VERSION})")
+        self.instance_lock = instance_lock
+
+        # Сразу скрываем главное окно, чтобы не мерцало при создании сотен полей и таблиц
+        self.withdraw()
 
         self.detect_crisp_fonts()
         self.configure_dpi_scaling()
+
+        # Отображаем окно-заставку с сообщением о загрузке
+        splash = None
+        if show_splash:
+            try:
+                splash = SplashScreen(self, font_sans=self.font_sans)
+            except Exception:
+                splash = None
+
+        self.title(f"Журнал учёта работы педагога — Обложка А4 (v{APP_VERSION})")
 
         self.base_w = 1140
         self.base_h = 760
@@ -3054,6 +3395,8 @@ class JournalCoverApp(tk.Tk):
         self._students_save_timer = None
 
         # Загрузка данных из config.json
+        if splash:
+            splash.set_status("Чтение данных из файла config.json...")
         self.config_data = load_config()
         initial_year = self.config_data.get("last_academic_year", "2024 / 2025")
         initial_teacher = self.config_data.get("teacher_name", "")
@@ -3443,18 +3786,35 @@ class JournalCoverApp(tk.Tk):
         self.start_year_var.trace_add("write", self.on_title_input_changed)
         self.end_day_var.trace_add("write", self.on_title_input_changed)
         self.end_month_var.trace_add("write", self.on_title_input_changed)
-        self.end_year_var.trace_add("write", self.on_title_input_changed)
-
         self.protocol("WM_DELETE_WINDOW", self.on_window_close)
 
+        if splash:
+            splash.set_status("Построение вкладок и элементов интерфейса...")
         self.setup_ui()
+
         # Глобальный перехват клика в любое место окна для сброса фокуса и автосохранения
         self.bind_all("<Button-1>", self.on_global_click, add="+")
         # Синхронизация годов при запуске
         self.sync_years_from_academic_year(self.title_year_var.get())
 
+        if splash:
+            splash.set_status("Завершение настройки и подготовка окна...")
+
         # Центрирование полностью построенного окна по центру экрана
         self.center_window(self.base_w, self.base_h)
+
+        # Закрываем экран загрузки и плавно открываем главное окно
+        if splash:
+            try:
+                splash.set_status("Готово! Запуск...")
+                self.update_idletasks()
+                splash.finish()
+            except Exception:
+                pass
+
+        self.deiconify()
+        self.lift()
+        self.focus_force()
 
         # Сброс фокуса при запуске приложения, чтобы при открытии инпуты не были в фокусе
         self.clear_focus()
@@ -11926,11 +12286,16 @@ class JournalCoverApp(tk.Tk):
             print(f"Предупреждение: Не удалось сохранить все данные: {e}")
 
     def on_window_close(self):
-        """Гарантирует сохранение всех данных перед закрытием окна."""
+        """Гарантирует сохранение всех данных перед закрытием окна и освобождение блокировки экземпляра."""
         try:
             self.save_all_pending_data()
         except Exception:
             pass
+        if hasattr(self, 'instance_lock') and self.instance_lock:
+            try:
+                self.instance_lock.release()
+            except Exception:
+                pass
         self.destroy()
 
     def auto_save_main_data(self, *args):
@@ -13223,7 +13588,11 @@ class JournalCoverApp(tk.Tk):
 
 
 def main():
-    app = JournalCoverApp()
+    # 1. Защита от запуска нескольких экземпляров программы из одной папки
+    instance_lock = check_single_instance()
+
+    # 2. Запуск приложения со Splash Screen (окном загрузки)
+    app = JournalCoverApp(instance_lock=instance_lock, show_splash=True)
     app.mainloop()
 
 
