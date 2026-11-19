@@ -7037,11 +7037,30 @@ class JournalCoverApp(tk.Tk):
             cursor="hand2"
         ).pack(side=tk.LEFT, padx=(0, 6))
 
-        if m_key != "september":
+        month_keys = [m["key"] for m in MONTHS_CONFIG]
+        cur_m_idx = month_keys.index(m_key) if m_key in month_keys else 0
+        if cur_m_idx > 0:
+            prev_month_cfg = MONTHS_CONFIG[cur_m_idx - 1]
+            prev_month_key = prev_month_cfg["key"]
+            month_genitive = {
+                "september": "Сентября",
+                "october": "Октября",
+                "november": "Ноября",
+                "december": "Декабря",
+                "january": "Января",
+                "february": "Февраля",
+                "march": "Марта",
+                "april": "Апреля",
+                "may": "Мая",
+                "june": "Июня",
+                "july": "Июля",
+                "august": "Августа",
+            }
+            prev_month_gen = month_genitive.get(prev_month_key, prev_month_cfg["name"])
             tk.Button(
                 p1_btns,
-                text="👥 Скопировать детей из Сентября",
-                command=lambda k=m_key: self.copy_students_from_month(k, "september"),
+                text=f"👥 Скопировать детей из {prev_month_gen}",
+                command=lambda k=m_key, src=prev_month_key: self.copy_students_from_month(k, src),
                 font=(self.font_sans, 8, "bold"),
                 bg="#f0fdf4",
                 fg="#15803d",
@@ -12842,18 +12861,25 @@ class JournalCoverApp(tk.Tk):
         self.status_var.set(f"Вставлено {count} тем занятий из буфера обмена ({m_name}, со строки {start_idx + 1}).")
         return "break"
 
-    def copy_students_from_month(self, target_month_key: str, source_month_key: str = "september"):
-        """Копирует список обучающихся из одного месяца в другой."""
-        if target_month_key not in self.months_data or source_month_key not in self.months_data:
+    def copy_students_from_month(self, target_month_key: str, source_month_key: str = None):
+        """Копирует список обучающихся из одного месяца в другой (по умолчанию — из предыдущего месяца)."""
+        if source_month_key is None:
+            month_keys = [m["key"] for m in MONTHS_CONFIG]
+            if target_month_key in month_keys:
+                idx = month_keys.index(target_month_key)
+                if idx > 0:
+                    source_month_key = month_keys[idx - 1]
+        if not source_month_key or target_month_key not in self.months_data or source_month_key not in self.months_data:
             return
         src_names = [v.get() for v in self.months_data[source_month_key]["student_vars"]]
         non_empty = [n for n in src_names if n.strip()]
         if not non_empty:
             messagebox.showinfo("Список пуст", f"В месяце «{self.months_data[source_month_key]['config']['name']}» нет заполненных имен детей.")
             return
-        tgt_snapshot = [(v, v.get()) for v in self.months_data[target_month_key]["student_vars"]]
-        for i in range(30):
-            self.months_data[target_month_key]["student_vars"][i].set(src_names[i])
+        tgt_vars = self.months_data[target_month_key]["student_vars"]
+        tgt_snapshot = [(v, v.get()) for v in tgt_vars]
+        for i in range(min(len(src_names), len(tgt_vars))):
+            tgt_vars[i].set(src_names[i])
         self.auto_save_month_data(target_month_key)
         tgt_name = self.months_data[target_month_key]["config"]["name"]
         src_name = self.months_data[source_month_key]["config"]["name"]

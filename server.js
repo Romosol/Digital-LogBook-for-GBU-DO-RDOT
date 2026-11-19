@@ -145,8 +145,7 @@ const htmlContent = `<!DOCTYPE html>
 </body>
 </html>`;
 
-const PRIMARY_PORT = 3000;
-const ALT_PORT = process.env.PORT && parseInt(process.env.PORT, 10) !== PRIMARY_PORT ? parseInt(process.env.PORT, 10) : null;
+const PORT = 3000;
 
 function requestHandler(req, res) {
   res.writeHead(200, {
@@ -156,14 +155,7 @@ function requestHandler(req, res) {
   res.end(htmlContent);
 }
 
-const server3000 = http.createServer(requestHandler);
-server3000.listen(PRIMARY_PORT, '0.0.0.0', () => {
-  console.log(`Logbook dev server is running on http://0.0.0.0:${PRIMARY_PORT}`);
+const server = http.createServer(requestHandler);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Logbook dev server is running on http://0.0.0.0:${PORT}`);
 });
-
-if (ALT_PORT) {
-  const serverAlt = http.createServer(requestHandler);
-  serverAlt.listen(ALT_PORT, '0.0.0.0', () => {
-    console.log(`Logbook alt port server is running on http://0.0.0.0:${ALT_PORT}`);
-  });
-}
